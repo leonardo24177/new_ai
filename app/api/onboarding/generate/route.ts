@@ -56,12 +56,14 @@ ISTRUZIONI PER LA GENERAZIONE:
 Genera ora il system prompt:`
 
     const message = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-5',
       max_tokens: 1000,
       messages: [{ role: 'user', content: prompt }],
     })
 
     const system_prompt = message.content[0].type === 'text' ? message.content[0].text : ''
+console.log('SYSTEM PROMPT GENERATO:', system_prompt)
+console.log('CONTENT:', JSON.stringify(message.content))
 
     return NextResponse.json({ system_prompt })
   } catch (error) {

@@ -10,7 +10,6 @@ import {
   SPECIALIZZAZIONI,
   getFontiDefault,
   type Professione,
-  type Ambito,
 } from '@/lib/onboarding/config'
 
 const TOTAL_STEPS = 9
@@ -49,6 +48,7 @@ export default function OnboardingForm() {
   const [step, setStep] = useState(1)
   const [loading, setLoading] = useState(false)
   const [dragIndex, setDragIndex] = useState<number | null>(null)
+  const [error, setError] = useState('')
 
   const [data, setData] = useState<OnboardingData>({
     nome: '',
@@ -64,7 +64,6 @@ export default function OnboardingForm() {
     note_libere: '',
   })
 
-  // Aggiorna le fonti quando cambia professione/utilizzo/specializzazione
   useEffect(() => {
     if (data.professione && data.utilizzo) {
       const fonti = getFontiDefault(data.professione, data.utilizzo, data.specializzazione)
@@ -78,7 +77,6 @@ export default function OnboardingForm() {
     setData(prev => ({ ...prev, [field]: value }))
   }
 
-  // Calcola steps visibili in base all'ambito
   function getMaxStep() {
     if (data.ambito === 'lavoro') return TOTAL_STEPS
     if (data.ambito === 'studio') return 5
@@ -92,7 +90,6 @@ export default function OnboardingForm() {
       case 2: return data.ambito !== ''
       case 3:
         if (data.ambito === 'lavoro') return data.professione !== ''
-        if (data.ambito === 'studio') return data.utilizzo !== ''
         return data.utilizzo !== ''
       case 4:
         if (data.ambito === 'lavoro') return data.utilizzo !== ''
@@ -109,7 +106,6 @@ export default function OnboardingForm() {
     }
   }
 
-  // Drag & drop fonti
   function onDragStart(index: number) { setDragIndex(index) }
   function onDragOver(e: React.DragEvent, index: number) {
     e.preventDefault()
@@ -133,28 +129,58 @@ export default function OnboardingForm() {
 
   async function generateAndSave() {
     setLoading(true)
+    setError('')
     try {
+      // 1. Genera il system prompt
       const res = await fetch('/api/onboarding/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
       })
-      const { system_prompt } = await res.json()
 
+      if (!res.ok) {
+        throw new Error(`Errore API: ${res.status}`)
+      }
+
+      const json = await res.json()
+      const system_prompt = json.system_prompt
+
+      if (!system_prompt) {
+        throw new Error('System prompt vuoto')
+      }
+
+      // 2. Recupera utente
       const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) throw new Error('Non autenticato')
+      const { data: authData } = await supabase.auth.getUser()
+      const user = authData?.user
 
-      await supabase.from('user_configs').upsert({
-        user_id: user.id,
-        system_prompt_base: system_prompt,
-        nome_assistente: 'Assistente',
-        lingua: 'it',
-      })
+      if (!user) {
+        throw new Error('Utente non autenticato')
+      }
 
+      // 3. Salva su Supabase
+      const { error: upsertError } = await supabase
+        .from('user_configs')
+        .upsert({
+          user_id: user.id,
+          system_prompt_base: system_prompt,
+          nome_assistente: 'Assistente',
+          lingua: 'it',
+        }, {
+          onConflict: 'user_id'
+        })
+
+      if (upsertError) {
+        throw new Error(`Errore salvataggio: ${upsertError.message}`)
+      }
+
+      // 4. Redirect alla chat
       router.push('/chat')
-    } catch (e) {
-      console.error(e)
+      router.refresh()
+
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Errore sconosciuto'
+      setError(msg)
     } finally {
       setLoading(false)
     }
@@ -176,10 +202,7 @@ export default function OnboardingForm() {
         </div>
 
         <div className="p-8">
-          {/* Step counter */}
-          <p className="text-xs text-gray-400 mb-6">
-            Step {step} di {getMaxStep()}
-          </p>
+          <p className="text-xs text-gray-400 mb-6">Step {step} di {getMaxStep()}</p>
 
           {/* STEP 1 — Nome */}
           {step === 1 && (
@@ -192,7 +215,7 @@ export default function OnboardingForm() {
                 onChange={e => update('nome', e.target.value)}
                 placeholder="Il tuo nome"
                 autoFocus
-                className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900"
                 onKeyDown={e => e.key === 'Enter' && canProceed() && setStep(2)}
               />
             </div>
@@ -222,7 +245,7 @@ export default function OnboardingForm() {
             </div>
           )}
 
-          {/* STEP 3 — Professione (lavoro) o Livello (studio) o Utilizzo (personale) */}
+          {/* STEP 3 */}
           {step === 3 && (
             <div>
               {data.ambito === 'lavoro' && (
@@ -292,7 +315,7 @@ export default function OnboardingForm() {
             </div>
           )}
 
-          {/* STEP 4 — Utilizzo principale (lavoro) o Tono (studio/personale) */}
+          {/* STEP 4 */}
           {step === 4 && (
             <div>
               {data.ambito === 'lavoro' && data.professione && data.professione !== 'altro' && (
@@ -303,7 +326,13 @@ export default function OnboardingForm() {
                     {UTILIZZI[data.professione as Professione]?.map(u => (
                       <button
                         key={u.value}
-                        onClick={() => { update('utilizzo', u.value); update('specializzazione', ''); setStep(hasSpecializzazione ? 5 : 6) }}
+                        onClick={() => {
+                          update('utilizzo', u.value)
+                          update('specializzazione', '')
+                          const key = `${data.professione}_${u.value}`
+                          const hasSpe = SPECIALIZZAZIONI[key]?.length > 0
+                          setStep(hasSpe ? 5 : 6)
+                        }}
                         className={`w-full px-4 py-3.5 rounded-xl border text-sm font-medium text-left transition-all ${
                           data.utilizzo === u.value
                             ? 'border-gray-900 bg-gray-900 text-white'
@@ -324,7 +353,7 @@ export default function OnboardingForm() {
                     {TONI.map(t => (
                       <button
                         key={t.value}
-                        onClick={() => { update('tono', t.value as 'formale' | 'diretto' | 'colloquiale'); setStep(5) }}
+                        onClick={() => { update('tono', t.value); setStep(5) }}
                         className={`w-full px-4 py-3.5 rounded-xl border text-left transition-all ${
                           data.tono === t.value
                             ? 'border-gray-900 bg-gray-900 text-white'
@@ -341,38 +370,54 @@ export default function OnboardingForm() {
             </div>
           )}
 
-          {/* STEP 5 — Specializzazione (solo lavoro con specializzazione disponibile) */}
-          {step === 5 && data.ambito === 'lavoro' && (
+          {/* STEP 5 — Specializzazione (lavoro) o Note libere (studio/personale) */}
+          {step === 5 && (
             <div>
-              <h2 className="text-xl font-semibold text-gray-900 mb-1">Specializzazione</h2>
-              <p className="text-gray-500 text-sm mb-6">Seleziona l&apos;area specifica</p>
-              <div className="space-y-3">
-                {SPECIALIZZAZIONI[specializzioneKey]?.map(s => (
-                  <button
-                    key={s.value}
-                    onClick={() => { update('specializzazione', s.value); setStep(6) }}
-                    className={`w-full px-4 py-3.5 rounded-xl border text-sm font-medium text-left transition-all ${
-                      data.specializzazione === s.value
-                        ? 'border-gray-900 bg-gray-900 text-white'
-                        : 'border-gray-200 hover:border-gray-400 text-gray-700'
-                    }`}
-                  >
-                    {s.label}
-                  </button>
-                ))}
-              </div>
+              {data.ambito === 'lavoro' && hasSpecializzazione && (
+                <>
+                  <h2 className="text-xl font-semibold text-gray-900 mb-1">Specializzazione</h2>
+                  <p className="text-gray-500 text-sm mb-6">Seleziona l&apos;area specifica</p>
+                  <div className="space-y-3">
+                    {SPECIALIZZAZIONI[specializzioneKey]?.map(s => (
+                      <button
+                        key={s.value}
+                        onClick={() => { update('specializzazione', s.value); setStep(6) }}
+                        className={`w-full px-4 py-3.5 rounded-xl border text-sm font-medium text-left transition-all ${
+                          data.specializzazione === s.value
+                            ? 'border-gray-900 bg-gray-900 text-white'
+                            : 'border-gray-200 hover:border-gray-400 text-gray-700'
+                        }`}
+                      >
+                        {s.label}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+              {(data.ambito === 'studio' || data.ambito === 'personale') && (
+                <>
+                  <h2 className="text-xl font-semibold text-gray-900 mb-1">Qualcosa che devo sapere?</h2>
+                  <p className="text-gray-500 text-sm mb-6">Informazioni aggiuntive (opzionale)</p>
+                  <textarea
+                    value={data.note_libere}
+                    onChange={e => update('note_libere', e.target.value)}
+                    placeholder="Es. Preferisco risposte con esempi pratici..."
+                    rows={5}
+                    className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900 resize-none"
+                  />
+                </>
+              )}
             </div>
           )}
 
-          {/* STEP 6 — Fonti e gerarchia (drag & drop) */}
+          {/* STEP 6 — Fonti drag & drop */}
           {step === 6 && data.ambito === 'lavoro' && (
             <div>
               <h2 className="text-xl font-semibold text-gray-900 mb-1">Gerarchia delle fonti</h2>
               <p className="text-gray-500 text-sm mb-2">Trascina per riordinare. La posizione determina la priorità.</p>
               <p className="text-xs text-gray-400 mb-5">La fonte in cima ha la massima priorità</p>
-
               {data.fonti.length === 0 ? (
-                <p className="text-gray-400 text-sm italic">Nessuna fonte predefinita per questa combinazione. Potrai aggiungerle manualmente.</p>
+                <p className="text-gray-400 text-sm italic">Nessuna fonte predefinita trovata.</p>
               ) : (
                 <div className="space-y-2">
                   {data.fonti.map((fonte, index) => (
@@ -382,8 +427,8 @@ export default function OnboardingForm() {
                       onDragStart={() => onDragStart(index)}
                       onDragOver={e => onDragOver(e, index)}
                       onDragEnd={onDragEnd}
-                      className={`flex items-center gap-3 px-4 py-3 rounded-xl border cursor-grab active:cursor-grabbing transition-all ${
-                        dragIndex === index ? 'opacity-50 scale-95' : 'opacity-100'
+                      className={`flex items-center gap-3 px-4 py-3 rounded-xl border cursor-grab transition-all ${
+                        dragIndex === index ? 'opacity-50 scale-95' : ''
                       } ${data.fonti_escluse.includes(fonte.id) ? 'border-red-200 bg-red-50' : 'border-gray-200 bg-white hover:border-gray-300'}`}
                     >
                       <span className="text-gray-300 text-sm font-mono select-none">{index + 1}</span>
@@ -405,7 +450,7 @@ export default function OnboardingForm() {
                       >
                         {data.fonti_escluse.includes(fonte.id) ? 'Ripristina' : 'Escludi'}
                       </button>
-                      <span className="text-gray-300 cursor-grab">⠿</span>
+                      <span className="text-gray-300">⠿</span>
                     </div>
                   ))}
                 </div>
@@ -413,7 +458,7 @@ export default function OnboardingForm() {
             </div>
           )}
 
-          {/* STEP 7 — Comportamento citazioni */}
+          {/* STEP 7 — Citazioni */}
           {step === 7 && data.ambito === 'lavoro' && (
             <div>
               <h2 className="text-xl font-semibold text-gray-900 mb-1">Come vuoi le citazioni?</h2>
@@ -426,7 +471,7 @@ export default function OnboardingForm() {
                 ].map(c => (
                   <button
                     key={c.value}
-                    onClick={() => { update('citazione', c.value as 'sempre' | 'essenziale' | 'mai'); setStep(8) }}
+                    onClick={() => { update('citazione', c.value); setStep(8) }}
                     className={`w-full px-4 py-3.5 rounded-xl border text-left transition-all ${
                       data.citazione === c.value
                         ? 'border-gray-900 bg-gray-900 text-white'
@@ -441,20 +486,20 @@ export default function OnboardingForm() {
             </div>
           )}
 
-          {/* STEP 8 — Conflitto tra fonti + Tono (lavoro) */}
+          {/* STEP 8 — Conflitto fonti + Tono */}
           {step === 8 && data.ambito === 'lavoro' && (
             <div>
               <h2 className="text-xl font-semibold text-gray-900 mb-1">In caso di conflitto tra fonti</h2>
-              <p className="text-gray-500 text-sm mb-4">Cosa deve fare l&apos;assistente quando le fonti si contraddicono</p>
+              <p className="text-gray-500 text-sm mb-4">Cosa deve fare l&apos;assistente</p>
               <div className="space-y-3 mb-8">
                 {[
-                  { value: 'gerarchia', label: 'Segui la gerarchia impostata', desc: 'Prevale sempre la fonte con priorità maggiore' },
+                  { value: 'gerarchia', label: 'Segui la gerarchia impostata', desc: 'Prevale la fonte con priorità maggiore' },
                   { value: 'entrambe', label: 'Presenta entrambe le posizioni', desc: 'Mostra le diverse interpretazioni' },
                   { value: 'chiedi', label: 'Chiedimi come procedere', desc: 'Si ferma e chiede istruzioni' },
                 ].map(c => (
                   <button
                     key={c.value}
-                    onClick={() => update('conflitto_fonti', c.value as 'gerarchia' | 'entrambe' | 'chiedi')}
+                    onClick={() => update('conflitto_fonti', c.value)}
                     className={`w-full px-4 py-3.5 rounded-xl border text-left transition-all ${
                       data.conflitto_fonti === c.value
                         ? 'border-gray-900 bg-gray-900 text-white'
@@ -466,14 +511,12 @@ export default function OnboardingForm() {
                   </button>
                 ))}
               </div>
-
-              <h3 className="text-base font-semibold text-gray-900 mb-1">Tono preferito</h3>
-              <p className="text-gray-500 text-sm mb-3">Come vuoi che ti risponda</p>
+              <h3 className="text-base font-semibold text-gray-900 mb-3">Tono preferito</h3>
               <div className="space-y-2">
                 {TONI.map(t => (
                   <button
                     key={t.value}
-                    onClick={() => update('tono', t.value as 'formale' | 'diretto' | 'colloquiale')}
+                    onClick={() => update('tono', t.value)}
                     className={`w-full px-4 py-3 rounded-xl border text-left transition-all ${
                       data.tono === t.value
                         ? 'border-gray-900 bg-gray-900 text-white'
@@ -488,21 +531,24 @@ export default function OnboardingForm() {
             </div>
           )}
 
-          {/* STEP 9 (o ultimo step) — Note libere */}
-          {(step === 9 || (data.ambito !== 'lavoro' && step === getMaxStep())) && (
+          {/* STEP 9 — Note libere (lavoro) */}
+          {step === 9 && data.ambito === 'lavoro' && (
             <div>
               <h2 className="text-xl font-semibold text-gray-900 mb-1">Qualcosa che devo sapere?</h2>
-              <p className="text-gray-500 text-sm mb-6">
-                Informazioni aggiuntive che vuoi dare al tuo assistente (opzionale)
-              </p>
+              <p className="text-gray-500 text-sm mb-6">Informazioni aggiuntive (opzionale)</p>
               <textarea
                 value={data.note_libere}
                 onChange={e => update('note_libere', e.target.value)}
-                placeholder="Es. Lavoro principalmente con clienti stranieri, preferisco risposte in italiano ma con riferimenti anche alla normativa UE..."
+                placeholder="Es. Lavoro principalmente con clienti stranieri..."
                 rows={5}
-                className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 resize-none"
+                className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900 resize-none"
               />
             </div>
+          )}
+
+          {/* Errore */}
+          {error && (
+            <p className="mt-4 text-red-500 text-sm">{error}</p>
           )}
 
           {/* Navigazione */}
@@ -516,8 +562,18 @@ export default function OnboardingForm() {
               </button>
             )}
 
-            {/* Avanti — non mostrato negli step con selezione diretta (2,3,4,5,7) */}
-            {![2, 3, 4, 5, 7].includes(step) && step < getMaxStep() && (
+            {/* Avanti per step 6 e 8 */}
+            {[6, 8].includes(step) && step < getMaxStep() && (
+              <button
+                onClick={() => setStep(s => s + 1)}
+                className="flex-1 bg-gray-900 text-white rounded-lg py-2.5 text-sm font-medium hover:bg-gray-800 transition-colors"
+              >
+                Continua →
+              </button>
+            )}
+
+            {/* Avanti per step con testo libero */}
+            {[1, 5, 9].includes(step) && step < getMaxStep() && (
               <button
                 onClick={() => setStep(s => s + 1)}
                 disabled={!canProceed()}
@@ -535,16 +591,6 @@ export default function OnboardingForm() {
                 className="flex-1 bg-gray-900 text-white rounded-lg py-2.5 text-sm font-medium hover:bg-gray-800 disabled:opacity-40 transition-colors"
               >
                 {loading ? 'Creo il tuo assistente...' : 'Crea il mio assistente →'}
-              </button>
-            )}
-
-            {/* Avanti per step 6 e 8 (non auto-advance) */}
-            {[6, 8].includes(step) && step < getMaxStep() && (
-              <button
-                onClick={() => setStep(s => s + 1)}
-                className="flex-1 bg-gray-900 text-white rounded-lg py-2.5 text-sm font-medium hover:bg-gray-800 transition-colors"
-              >
-                Continua →
               </button>
             )}
           </div>
