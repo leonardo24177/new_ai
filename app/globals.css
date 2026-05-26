@@ -24,3 +24,59 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+/* ============================================================
+   AGGIUNGERE in app/globals.css (in fondo al file)
+   Mobile utilities per safe-area e viewport dinamico
+   ============================================================ */
+
+/* Safe area padding utilities (notch iPhone, navigation bar Android) */
+.pt-safe {
+  padding-top: env(safe-area-inset-top);
+}
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.pl-safe {
+  padding-left: env(safe-area-inset-left);
+}
+.pr-safe {
+  padding-right: env(safe-area-inset-right);
+}
+
+/* Scrollbar nascosta (per tab bar scrollabili su mobile) */
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+/* Previene il "bounce" iOS su elementi fixed */
+.no-bounce {
+  overscroll-behavior: none;
+}
+
+/* Fix per textarea che si espande correttamente su iOS */
+textarea {
+  -webkit-appearance: none;
+}
+
+/* Aumenta touch target minimo per link/bottoni su mobile */
+@media (max-width: 768px) {
+  button, a {
+    min-height: 36px;
+  }
+}
+
+/* Previene zoom automatico su input focus in iOS (font-size >= 16px) */
+@media (max-width: 768px) {
+  input[type="text"],
+  input[type="email"],
+  input[type="password"],
+  input[type="search"],
+  textarea,
+  select {
+    font-size: 16px;
+  }
+}

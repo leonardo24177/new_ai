@@ -10,8 +10,6 @@ import {
   type Professione,
   type Fonte,
 } from '@/lib/onboarding/config'
-import AddLinkForm from './AddLinkForm'
-import { toast } from 'sonner'
 
 type Ambito = 'lavoro' | 'studio' | 'personale'
 
@@ -36,9 +34,6 @@ interface UserFile {
   dimensione: number
   created_at: string
   storage_path: string
-  tipo?: string
-  url?: string
-  ambito?: string | null
 }
 
 const AMBITI_CONFIG = [
@@ -76,21 +71,13 @@ function formatSize(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)}MB`
 }
 
-function getFileOrLinkIcon(f: UserFile) {
-  if (f.tipo === 'link') return '🔗'
-  if (f.mime_type === 'application/pdf') return '📄'
-  if (f.mime_type?.includes('word')) return '📝'
-  if (f.mime_type?.includes('sheet')) return '📊'
-  if (f.mime_type?.includes('presentation')) return '📑'
-  if (f.mime_type?.startsWith('image/')) return '🖼️'
+function getFileIcon(mime: string) {
+  if (mime === 'application/pdf') return '📄'
+  if (mime.includes('word')) return '📝'
+  if (mime.includes('sheet')) return '📊'
+  if (mime.includes('presentation')) return '📑'
+  if (mime.startsWith('image/')) return '🖼️'
   return '📎'
-}
-
-function ambitoBadgeColor(ambito: string) {
-  if (ambito === 'lavoro') return 'bg-blue-50 text-blue-600'
-  if (ambito === 'studio') return 'bg-green-50 text-green-600'
-  if (ambito === 'personale') return 'bg-purple-50 text-purple-600'
-  return 'bg-gray-100 text-gray-500'
 }
 
 export default function ProfilePage() {
@@ -100,14 +87,12 @@ export default function ProfilePage() {
   const [uploading, setUploading] = useState(false)
   const [activeTab, setActiveTab] = useState<'ambiti' | 'file' | 'prompt'>('ambiti')
   const [activeAmbito, setActiveAmbito] = useState<Ambito | null>(null)
-  const [filtroAmbito, setFiltroAmbito] = useState<Ambito | 'tutti'>('tutti')
   const [nomeUtente, setNomeUtente] = useState('')
   const [ambitiData, setAmbitiData] = useState<AmbitoData[]>([])
   const [profileFiles, setProfileFiles] = useState<UserFile[]>([])
   const [systemPrompt, setSystemPrompt] = useState('')
   const [dragIndex, setDragIndex] = useState<number | null>(null)
-  const [showAddLink, setShowAddLink] = useState(false)
-  const [ambitiDisponibili, setAmbitiDisponibili] = useState<string[]>([])
+  const [successMsg, setSuccessMsg] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => { loadProfile() }, [])
@@ -128,7 +113,6 @@ export default function ProfilePage() {
     if (ambiti && ambiti.length > 0) {
       setAmbitiData(ambiti.map(a => a.onboarding_data as AmbitoData))
       setActiveAmbito(ambiti[0].onboarding_data.ambito)
-      setAmbitiDisponibili(ambiti.map(a => a.onboarding_data.ambito))
     }
 
     const { data: config } = await supabase
@@ -189,11 +173,11 @@ export default function ProfilePage() {
       if (!user) return
       const ad = ambitiData.find(a => a.ambito === ambito)
       if (!ad) return
-      await supabase.from('user_ambiti').upsert(
-        { user_id: user.id, ambito, onboarding_data: ad },
-        { onConflict: 'user_id,ambito' }
-      )
-      toast.success('Salvato!')
+      await supabase
+        .from('user_ambiti')
+        .upsert({ user_id: user.id, ambito, onboarding_data: ad }, { onConflict: 'user_id,ambito' })
+      setSuccessMsg('Salvato!')
+      setTimeout(() => setSuccessMsg(''), 2000)
     } finally {
       setSaving(false)
     }
@@ -218,14 +202,13 @@ export default function ProfilePage() {
       )
       for (let i = 0; i < ambitiData.length; i++) {
         await supabase.from('user_ambiti').upsert({
-          user_id: user.id,
-          ambito: ambitiData[i].ambito,
-          onboarding_data: ambitiData[i],
-          system_prompt_extra: json.ambiti_prompts?.[i] || '',
+          user_id: user.id, ambito: ambitiData[i].ambito,
+          onboarding_data: ambitiData[i], system_prompt_extra: json.ambiti_prompts?.[i] || '',
         }, { onConflict: 'user_id,ambito' })
       }
       setSystemPrompt(json.system_prompt)
-      toast.success('System prompt rigenerato!')
+      setSuccessMsg('System prompt rigenerato!')
+      setTimeout(() => setSuccessMsg(''), 3000)
     } catch (e) {
       console.error(e)
     } finally {
@@ -241,37 +224,28 @@ export default function ProfilePage() {
       const formData = new FormData()
       formData.append('file', file)
       formData.append('tipo_contesto', 'profile')
-      const ambitoUpload = filtroAmbito !== 'tutti' ? filtroAmbito : activeAmbito
-      if (ambitoUpload) formData.append('ambito', ambitoUpload)
       const res = await fetch('/api/upload', { method: 'POST', body: formData })
       const data = await res.json()
-      if (data.error) { toast.error(data.error); return }
+      if (data.error) { alert(data.error); return }
       setProfileFiles(prev => [{
         id: data.id, nome: data.nome, mime_type: data.mime_type,
         dimensione: data.dimensione, created_at: new Date().toISOString(),
-        storage_path: data.storage_path, tipo: 'file',
-        ambito: ambitoUpload,
+        storage_path: data.storage_path,
       }, ...prev])
-      toast.success('File caricato!')
+      setSuccessMsg('File caricato!')
+      setTimeout(() => setSuccessMsg(''), 2000)
     } finally {
       setUploading(false)
       if (fileInputRef.current) fileInputRef.current.value = ''
     }
   }
 
-  async function deleteFile(fileId: string, storagePath: string, tipo?: string) {
+  async function deleteFile(fileId: string, storagePath: string) {
     const supabase = createClient()
-    if (tipo !== 'link' && storagePath) {
-      await supabase.storage.from('user-files').remove([storagePath])
-    }
+    await supabase.storage.from('user-files').remove([storagePath])
     await supabase.from('user_files').delete().eq('id', fileId)
     setProfileFiles(prev => prev.filter(f => f.id !== fileId))
   }
-
-  // Filtra i file per ambito selezionato
-  const fileFiltrati = filtroAmbito === 'tutti'
-    ? profileFiles
-    : profileFiles.filter(f => f.ambito === filtroAmbito || f.ambito === null)
 
   if (loading) {
     return (
@@ -284,35 +258,46 @@ export default function ProfilePage() {
   const currentAmbito = ambitiData.find(a => a.ambito === activeAmbito)
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
 
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <button onClick={() => router.push('/chat')} className="text-gray-400 hover:text-gray-600 transition-colors">←</button>
+      {/* Header — mobile safe area top */}
+      <div
+        className="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between sticky top-0 z-10"
+        style={{ paddingTop: 'max(12px, env(safe-area-inset-top))' }}
+      >
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => router.push('/chat')}
+            className="w-9 h-9 flex items-center justify-center text-gray-400 active:text-gray-600 rounded-xl"
+          >
+            ←
+          </button>
           <div>
             <h1 className="text-base font-semibold text-gray-900">Profilo</h1>
             <p className="text-xs text-gray-400">{nomeUtente}</p>
           </div>
         </div>
+        {successMsg && (
+          <span className="text-sm text-green-600 font-medium">{successMsg}</span>
+        )}
       </div>
 
-      <div className="max-w-2xl mx-auto px-4 py-6">
+      <div className="max-w-2xl mx-auto px-4 py-4">
 
-        {/* Tab navigazione */}
-        <div className="flex gap-1 bg-gray-100 rounded-xl p-1 mb-6">
+        {/* Tab navigazione — scrollabile su mobile */}
+        <div className="flex gap-1 bg-gray-100 rounded-xl p-1 mb-5 overflow-x-auto scrollbar-none">
           {[
             { key: 'ambiti', label: 'Ambiti' },
-            { key: 'file', label: 'File e Link' },
+            { key: 'file', label: 'File' },
             { key: 'prompt', label: 'System Prompt' },
           ].map(tab => (
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key as 'ambiti' | 'file' | 'prompt')}
-              className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
+              className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
                 activeTab === tab.key
                   ? 'bg-white text-gray-900 shadow-sm'
-                  : 'text-gray-500 hover:text-gray-700'
+                  : 'text-gray-500'
               }`}
             >
               {tab.label}
@@ -323,17 +308,18 @@ export default function ProfilePage() {
         {/* TAB AMBITI */}
         {activeTab === 'ambiti' && (
           <div>
-            <div className="flex gap-2 mb-6">
+            {/* Selettore ambito */}
+            <div className="flex gap-2 mb-5 overflow-x-auto scrollbar-none pb-1">
               {ambitiData.map(ad => {
                 const config = AMBITI_CONFIG.find(a => a.value === ad.ambito)
                 return (
                   <button
                     key={ad.ambito}
                     onClick={() => setActiveAmbito(ad.ambito)}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-xl border text-sm font-medium transition-all ${
+                    className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm font-medium transition-all whitespace-nowrap flex-shrink-0 ${
                       activeAmbito === ad.ambito
                         ? 'border-gray-900 bg-gray-900 text-white'
-                        : 'border-gray-200 bg-white text-gray-700 hover:border-gray-400'
+                        : 'border-gray-200 bg-white text-gray-700'
                     }`}
                   >
                     <span>{config?.emoji}</span>
@@ -346,11 +332,13 @@ export default function ProfilePage() {
             {currentAmbito && (
               <div className="space-y-4">
 
+                {/* LAVORO */}
                 {currentAmbito.ambito === 'lavoro' && (
                   <>
-                    <div className="bg-white rounded-2xl border border-gray-200 p-5">
+                    {/* Professione */}
+                    <div className="bg-white rounded-2xl border border-gray-200 p-4">
                       <h3 className="text-sm font-semibold text-gray-900 mb-3">Professione</h3>
-                      <div className="grid grid-cols-3 gap-2">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                         {PROFESSIONI.map(p => (
                           <button
                             key={p.value}
@@ -373,8 +361,9 @@ export default function ProfilePage() {
                       </div>
                     </div>
 
+                    {/* Utilizzo */}
                     {currentAmbito.professione && currentAmbito.professione !== 'altro' && (
-                      <div className="bg-white rounded-2xl border border-gray-200 p-5">
+                      <div className="bg-white rounded-2xl border border-gray-200 p-4">
                         <h3 className="text-sm font-semibold text-gray-900 mb-3">Utilizzo principale</h3>
                         <div className="space-y-2">
                           {UTILIZZI[currentAmbito.professione as Professione]?.map(u => (
@@ -399,8 +388,9 @@ export default function ProfilePage() {
                       </div>
                     )}
 
+                    {/* Specializzazione */}
                     {currentAmbito.utilizzo && SPECIALIZZAZIONI[`${currentAmbito.professione}_${currentAmbito.utilizzo}`]?.length > 0 && (
-                      <div className="bg-white rounded-2xl border border-gray-200 p-5">
+                      <div className="bg-white rounded-2xl border border-gray-200 p-4">
                         <h3 className="text-sm font-semibold text-gray-900 mb-3">Specializzazione</h3>
                         <div className="space-y-2">
                           {SPECIALIZZAZIONI[`${currentAmbito.professione}_${currentAmbito.utilizzo}`].map(s => (
@@ -424,8 +414,9 @@ export default function ProfilePage() {
                       </div>
                     )}
 
+                    {/* Fonti */}
                     {currentAmbito.fonti.length > 0 && (
-                      <div className="bg-white rounded-2xl border border-gray-200 p-5">
+                      <div className="bg-white rounded-2xl border border-gray-200 p-4">
                         <h3 className="text-sm font-semibold text-gray-900 mb-1">Gerarchia fonti</h3>
                         <p className="text-xs text-gray-400 mb-4">Trascina per riordinare</p>
                         <div className="space-y-2">
@@ -438,7 +429,7 @@ export default function ProfilePage() {
                               onDragEnd={onDragEnd}
                               className={`flex items-center gap-3 px-4 py-3 rounded-xl border cursor-grab transition-all ${
                                 dragIndex === index ? 'opacity-50' : ''
-                              } ${currentAmbito.fonti_escluse.includes(fonte.id) ? 'border-red-200 bg-red-50' : 'border-gray-200 hover:border-gray-300'}`}
+                              } ${currentAmbito.fonti_escluse.includes(fonte.id) ? 'border-red-200 bg-red-50' : 'border-gray-200'}`}
                             >
                               <span className="text-gray-300 text-sm font-mono">{index + 1}</span>
                               <div className="flex-1 min-w-0">
@@ -449,7 +440,7 @@ export default function ProfilePage() {
                               </div>
                               <button
                                 onClick={() => toggleEscludi('lavoro', fonte.id)}
-                                className={`text-xs px-2.5 py-1 rounded-lg ${
+                                className={`text-xs px-2.5 py-1.5 rounded-lg flex-shrink-0 ${
                                   currentAmbito.fonti_escluse.includes(fonte.id)
                                     ? 'bg-red-100 text-red-600'
                                     : 'bg-gray-100 text-gray-500'
@@ -457,14 +448,15 @@ export default function ProfilePage() {
                               >
                                 {currentAmbito.fonti_escluse.includes(fonte.id) ? 'Ripristina' : 'Escludi'}
                               </button>
-                              <span className="text-gray-300">⠿</span>
+                              <span className="text-gray-300 flex-shrink-0">⠿</span>
                             </div>
                           ))}
                         </div>
                       </div>
                     )}
 
-                    <div className="bg-white rounded-2xl border border-gray-200 p-5">
+                    {/* Citazione e conflitto */}
+                    <div className="bg-white rounded-2xl border border-gray-200 p-4">
                       <h3 className="text-sm font-semibold text-gray-900 mb-3">Citazione fonti</h3>
                       <div className="space-y-2">
                         {[
@@ -489,8 +481,9 @@ export default function ProfilePage() {
                   </>
                 )}
 
+                {/* STUDIO */}
                 {currentAmbito.ambito === 'studio' && (
-                  <div className="bg-white rounded-2xl border border-gray-200 p-5">
+                  <div className="bg-white rounded-2xl border border-gray-200 p-4">
                     <h3 className="text-sm font-semibold text-gray-900 mb-3">Livello scolastico</h3>
                     <div className="space-y-2">
                       {STUDI.map(s => (
@@ -510,8 +503,9 @@ export default function ProfilePage() {
                   </div>
                 )}
 
+                {/* PERSONALE */}
                 {currentAmbito.ambito === 'personale' && (
-                  <div className="bg-white rounded-2xl border border-gray-200 p-5">
+                  <div className="bg-white rounded-2xl border border-gray-200 p-4">
                     <h3 className="text-sm font-semibold text-gray-900 mb-3">Uso principale</h3>
                     <div className="space-y-2">
                       {['Organizzazione', 'Scrittura', 'Ricerca', 'Hobby', 'Benessere'].map(u => (
@@ -531,7 +525,8 @@ export default function ProfilePage() {
                   </div>
                 )}
 
-                <div className="bg-white rounded-2xl border border-gray-200 p-5">
+                {/* Tono */}
+                <div className="bg-white rounded-2xl border border-gray-200 p-4">
                   <h3 className="text-sm font-semibold text-gray-900 mb-3">Tono</h3>
                   <div className="space-y-2">
                     {TONI.map(t => (
@@ -550,20 +545,22 @@ export default function ProfilePage() {
                   </div>
                 </div>
 
-                <div className="flex gap-3">
+                {/* Bottoni azione */}
+                <div className="flex gap-3 pb-4">
                   <button
                     onClick={() => saveAmbito(currentAmbito.ambito)}
                     disabled={saving}
-                    className="flex-1 bg-gray-900 text-white rounded-xl py-3 text-sm font-medium hover:bg-gray-800 disabled:opacity-40 transition-colors"
+                    className="flex-1 bg-gray-900 text-white rounded-xl py-3.5 text-sm font-medium active:bg-gray-800 disabled:opacity-40 transition-colors"
                   >
                     {saving ? 'Salvo...' : 'Salva modifiche'}
                   </button>
                   <button
                     onClick={regeneratePrompt}
                     disabled={saving}
-                    className="px-4 py-3 border border-gray-200 rounded-xl text-sm text-gray-600 hover:border-gray-400 disabled:opacity-40 transition-colors"
+                    className="px-4 py-3.5 border border-gray-200 rounded-xl text-sm text-gray-600 active:border-gray-400 disabled:opacity-40 transition-colors"
+                    title="Rigenera il system prompt"
                   >
-                    🔄 Rigenera prompt
+                    🔄
                   </button>
                 </div>
               </div>
@@ -571,77 +568,21 @@ export default function ProfilePage() {
           </div>
         )}
 
-        {/* TAB FILE E LINK */}
+        {/* TAB FILE */}
         {activeTab === 'file' && (
           <div>
-            {/* Header con filtro ambito */}
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h2 className="text-sm font-semibold text-gray-900">File e link permanenti</h2>
-                <p className="text-xs text-gray-400 mt-0.5">
-                  {fileFiltrati.length} elemento{fileFiltrati.length !== 1 ? 'i' : ''}
-                  {filtroAmbito !== 'tutti' ? ` in [${filtroAmbito}]` : ' in tutti gli ambiti'}
-                </p>
+                <h2 className="text-sm font-semibold text-gray-900">File permanenti</h2>
+                <p className="text-xs text-gray-400 mt-0.5">Disponibili in tutte le conversazioni</p>
               </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setShowAddLink(!showAddLink)}
-                  className={`flex items-center gap-1.5 border px-3 py-2 rounded-xl text-sm transition-colors ${
-                    showAddLink
-                      ? 'border-gray-900 bg-gray-900 text-white'
-                      : 'border-gray-200 text-gray-600 hover:border-gray-400'
-                  }`}
-                >
-                  🔗 Link
-                </button>
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={uploading}
-                  className="flex items-center gap-2 bg-gray-900 text-white px-3 py-2 rounded-xl text-sm font-medium hover:bg-gray-800 disabled:opacity-40 transition-colors"
-                >
-                  {uploading ? '...' : '+ File'}
-                </button>
-              </div>
-            </div>
-
-            {/* Filtro ambito */}
-            <div className="flex gap-1.5 mb-4 flex-wrap">
               <button
-                onClick={() => setFiltroAmbito('tutti')}
-                className={`text-xs px-3 py-1.5 rounded-full border transition-all ${
-                  filtroAmbito === 'tutti'
-                    ? 'border-gray-900 bg-gray-900 text-white'
-                    : 'border-gray-200 text-gray-500 hover:border-gray-400'
-                }`}
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                className="flex items-center gap-2 bg-gray-900 text-white px-4 py-2.5 rounded-xl text-sm font-medium active:bg-gray-800 disabled:opacity-40 transition-colors"
               >
-                Tutti ({profileFiles.length})
+                {uploading ? '...' : '+ Aggiungi'}
               </button>
-              {ambitiDisponibili.map(a => {
-                const cfg = AMBITI_CONFIG.find(ac => ac.value === a)
-                const count = profileFiles.filter(f => f.ambito === a).length
-                return (
-                  <button
-                    key={a}
-                    onClick={() => setFiltroAmbito(a as Ambito)}
-                    className={`text-xs px-3 py-1.5 rounded-full border transition-all flex items-center gap-1 ${
-                      filtroAmbito === a
-                        ? 'border-gray-900 bg-gray-900 text-white'
-                        : 'border-gray-200 text-gray-500 hover:border-gray-400'
-                    }`}
-                  >
-                    <span>{cfg?.emoji}</span>
-                    <span>{cfg?.label} ({count})</span>
-                  </button>
-                )
-              })}
-              {profileFiles.filter(f => !f.ambito).length > 0 && (
-                <button
-                  onClick={() => setFiltroAmbito('tutti')}
-                  className="text-xs px-3 py-1.5 rounded-full border border-gray-200 text-gray-400"
-                >
-                  Generici ({profileFiles.filter(f => !f.ambito).length})
-                </button>
-              )}
             </div>
 
             <input
@@ -652,76 +593,23 @@ export default function ProfilePage() {
               className="hidden"
             />
 
-            {/* Form aggiunta link */}
-            {showAddLink && (
-              <AddLinkForm
-                ambito={filtroAmbito !== 'tutti' ? filtroAmbito : activeAmbito}
-                onAdded={(data) => {
-                  const ambitoLink = filtroAmbito !== 'tutti' ? filtroAmbito : activeAmbito
-                  setProfileFiles(prev => [{
-                    id: data.id,
-                    nome: data.nome,
-                    mime_type: 'text/html',
-                    dimensione: data.dimensione,
-                    created_at: new Date().toISOString(),
-                    storage_path: '',
-                    tipo: 'link',
-                    url: data.url,
-                    ambito: ambitoLink,
-                  }, ...prev])
-                  setShowAddLink(false)
-                  toast.success('Link aggiunto!')
-                }}
-              />
-            )}
-
-            {fileFiltrati.length === 0 ? (
+            {profileFiles.length === 0 ? (
               <div className="bg-white rounded-2xl border border-gray-200 p-8 text-center">
-                <p className="text-gray-400 text-sm">Nessun file o link</p>
-                <p className="text-gray-300 text-xs mt-1">
-                  {filtroAmbito !== 'tutti'
-                    ? `Nessun elemento per l'ambito ${filtroAmbito}`
-                    : 'Aggiungi file o link per averli sempre disponibili'}
-                </p>
+                <p className="text-gray-400 text-sm">Nessun file caricato</p>
+                <p className="text-gray-300 text-xs mt-1">I file permanenti sono disponibili in tutte le chat</p>
               </div>
             ) : (
               <div className="space-y-2">
-                {fileFiltrati.map(f => (
-                  <div key={f.id} className="bg-white rounded-2xl border border-gray-200 px-4 py-3 flex items-center gap-3">
-                    <span className="text-xl">{getFileOrLinkIcon(f)}</span>
+                {profileFiles.map(f => (
+                  <div key={f.id} className="bg-white rounded-2xl border border-gray-200 px-4 py-3.5 flex items-center gap-3">
+                    <span className="text-xl">{getFileIcon(f.mime_type)}</span>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <p className="text-sm font-medium text-gray-900 truncate">{f.nome}</p>
-                        {f.ambito && filtroAmbito === 'tutti' && (
-                          <span className={`text-xs px-2 py-0.5 rounded-full flex-shrink-0 ${ambitoBadgeColor(f.ambito)}`}>
-                            {f.ambito}
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        {f.tipo === 'link' ? (
-                          <>
-                            <a
-                              href={f.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-xs text-blue-500 hover:underline truncate max-w-[200px]"
-                            >
-                              {f.url}
-                            </a>
-                            {f.dimensione > 0
-                              ? <span className="text-xs text-gray-400">· {formatSize(f.dimensione)} scaricati</span>
-                              : <span className="text-xs text-gray-400">· solo riferimento</span>
-                            }
-                          </>
-                        ) : (
-                          <span className="text-xs text-gray-400">{formatSize(f.dimensione)}</span>
-                        )}
-                      </div>
+                      <p className="text-sm font-medium text-gray-900 truncate">{f.nome}</p>
+                      <p className="text-xs text-gray-400">{formatSize(f.dimensione)}</p>
                     </div>
                     <button
-                      onClick={() => deleteFile(f.id, f.storage_path, f.tipo)}
-                      className="text-gray-300 hover:text-red-500 transition-colors text-sm flex-shrink-0"
+                      onClick={() => deleteFile(f.id, f.storage_path)}
+                      className="text-gray-300 active:text-red-500 transition-colors text-lg p-1"
                     >
                       🗑
                     </button>
@@ -738,21 +626,21 @@ export default function ProfilePage() {
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h2 className="text-sm font-semibold text-gray-900">System prompt attivo</h2>
-                <p className="text-xs text-gray-400 mt-0.5">Generato automaticamente dalle tue impostazioni</p>
+                <p className="text-xs text-gray-400 mt-0.5">Generato automaticamente</p>
               </div>
               <button
                 onClick={regeneratePrompt}
                 disabled={saving}
-                className="flex items-center gap-2 border border-gray-200 text-gray-600 px-4 py-2 rounded-xl text-sm hover:border-gray-400 disabled:opacity-40 transition-colors"
+                className="flex items-center gap-2 border border-gray-200 text-gray-600 px-3 py-2 rounded-xl text-sm active:border-gray-400 disabled:opacity-40 transition-colors"
               >
                 🔄 {saving ? 'Rigenerando...' : 'Rigenera'}
               </button>
             </div>
-            <div className="bg-white rounded-2xl border border-gray-200 p-5">
+            <div className="bg-white rounded-2xl border border-gray-200 p-4">
               <textarea
                 value={systemPrompt}
                 onChange={e => setSystemPrompt(e.target.value)}
-                rows={20}
+                rows={14}
                 className="w-full text-sm text-gray-900 font-mono leading-relaxed resize-none focus:outline-none"
               />
             </div>
@@ -766,12 +654,13 @@ export default function ProfilePage() {
                     { user_id: user.id, system_prompt_base: systemPrompt },
                     { onConflict: 'user_id' }
                   )
-                  toast.success('Salvato!')
+                  setSuccessMsg('Salvato!')
+                  setTimeout(() => setSuccessMsg(''), 2000)
                 }
                 setSaving(false)
               }}
               disabled={saving}
-              className="mt-3 w-full bg-gray-900 text-white rounded-xl py-3 text-sm font-medium hover:bg-gray-800 disabled:opacity-40 transition-colors"
+              className="mt-3 w-full bg-gray-900 text-white rounded-xl py-3.5 text-sm font-medium active:bg-gray-800 disabled:opacity-40 transition-colors"
             >
               {saving ? 'Salvo...' : 'Salva system prompt'}
             </button>
