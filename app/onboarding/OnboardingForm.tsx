@@ -8,6 +8,7 @@ import {
   UTILIZZI,
   SPECIALIZZAZIONI,
   getFontiMultiple,
+  PROFESSIONI_LIST,
   type Professione,
   type Ambito,
 } from '@/lib/onboarding/config'
@@ -36,15 +37,12 @@ function defaultAmbitoData(ambito: Ambito): AmbitoData {
   }
 }
 
-const PROFESSIONI = [
-  { value: 'avvocato', label: 'Avvocato', emoji: '⚖️' },
-  { value: 'commercialista', label: 'Commercialista', emoji: '📊' },
-  { value: 'medico', label: 'Medico', emoji: '🏥' },
-  { value: 'insegnante', label: 'Insegnante', emoji: '📚' },
-  { value: 'architetto', label: 'Architetto', emoji: '📐' },
-  { value: 'imprenditore', label: 'Imprenditore', emoji: '💼' },
-  { value: 'altro', label: 'Altro', emoji: '👤' },
-]
+// Raggruppa PROFESSIONI_LIST per categoria
+const PROFESSIONI_PER_CATEGORIA = PROFESSIONI_LIST.reduce((acc, p) => {
+  if (!acc[p.categoria]) acc[p.categoria] = []
+  acc[p.categoria].push(p)
+  return acc
+}, {} as Record<string, typeof PROFESSIONI_LIST>)
 
 const STUDI = [
   { value: 'universita', label: 'Università' },
@@ -283,12 +281,27 @@ export default function OnboardingForm() {
             <>
               <h2 className="text-xl font-semibold text-gray-900 mb-1">Che professione hai?</h2>
               <p className="text-gray-500 text-sm mb-5">Personalizzeremo le fonti in base al tuo settore</p>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                {PROFESSIONI.map(p => (
-                  <button key={p.value} onClick={() => { updateAmbitoData(ambitoIndex, 'professione', p.value); updateAmbitoData(ambitoIndex, 'utilizzo', ''); updateAmbitoData(ambitoIndex, 'specializzazioni', []); updateAmbitoData(ambitoIndex, 'specializzazione_custom', ''); nextStep() }}
-                    className={`flex flex-col items-center gap-2 px-3 py-4 rounded-xl border text-xs font-medium transition-all ${ad.professione === p.value ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-200 text-gray-700'}`}>
-                    <span className="text-2xl">{p.emoji}</span>{p.label}
-                  </button>
+              <div className="space-y-5">
+                {Object.entries(PROFESSIONI_PER_CATEGORIA).map(([categoria, professioni]) => (
+                  <div key={categoria}>
+                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 px-1">{categoria}</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {professioni.map(p => (
+                        <button key={p.value}
+                          onClick={() => {
+                            updateAmbitoData(ambitoIndex, 'professione', p.value)
+                            updateAmbitoData(ambitoIndex, 'utilizzo', '')
+                            updateAmbitoData(ambitoIndex, 'specializzazioni', [])
+                            updateAmbitoData(ambitoIndex, 'specializzazione_custom', '')
+                            nextStep()
+                          }}
+                          className={`flex flex-col items-center gap-2 px-3 py-4 rounded-xl border text-xs font-medium transition-all ${ad.professione === p.value ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-200 text-gray-700'}`}>
+                          <span className="text-2xl">{p.emoji}</span>
+                          <span className="text-center leading-tight">{p.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 ))}
               </div>
             </>
