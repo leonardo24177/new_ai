@@ -218,10 +218,15 @@ export default function ChatPage() {
   const [showAmbitoMenu, setShowAmbitoMenu] = useState(false)
   const [pendingFile, setPendingFile] = useState<File | null>(null)
   const [showFileDialog, setShowFileDialog] = useState(false)
+  const [isRecording, setIsRecording] = useState(false)
+  const [isSpeaking, setIsSpeaking] = useState(false)
+  const [ttsEnabled, setTtsEnabled] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const isFirstMessage = useRef(true)
+  const recognitionRef = useRef<SpeechRecognition | null>(null)
+  const speechSynthRef = useRef<SpeechSynthesisUtterance | null>(null)
 
   const theme = AMBITI_THEME[ambitoAttivo || 'default'] || AMBITI_THEME.default
   const ambitoConfig = AMBITI_CONFIG.find(a => a.value === ambitoAttivo)
@@ -429,6 +434,7 @@ export default function ChatPage() {
           } catch {}
         }
       }
+      if (streamedText) speakText(streamedText)
     } catch (e) {
       console.error(e)
       setMessages(prev => [...prev, { role: 'assistant', content: 'Si è verificato un errore. Riprova.' }])
@@ -451,6 +457,48 @@ export default function ChatPage() {
     setInput(e.target.value)
     e.target.style.height = 'auto'
     e.target.style.height = `${Math.min(e.target.scrollHeight, 160)}px`
+  }
+
+  function startRecording() {
+    const SpeechRecognition = window.SpeechRecognition || (window as unknown as { webkitSpeechRecognition: typeof window.SpeechRecognition }).webkitSpeechRecognition
+    if (!SpeechRecognition) { toast.error('Il tuo browser non supporta il riconoscimento vocale'); return }
+    const recognition = new SpeechRecognition()
+    recognition.lang = 'it-IT'
+    recognition.continuous = false
+    recognition.interimResults = false
+    recognition.onresult = (e) => {
+      const transcript = e.results[0][0].transcript
+      setInput(prev => prev ? prev + ' ' + transcript : transcript)
+    }
+    recognition.onerror = () => { setIsRecording(false); toast.error('Errore microfono') }
+    recognition.onend = () => setIsRecording(false)
+    recognitionRef.current = recognition
+    recognition.start()
+    setIsRecording(true)
+  }
+
+  function stopRecording() {
+    recognitionRef.current?.stop()
+    setIsRecording(false)
+  }
+
+  function speakText(text: string) {
+    if (!ttsEnabled || !window.speechSynthesis) return
+    window.speechSynthesis.cancel()
+    const clean = text.replace(/[#*`_~]/g, '').replace(/\[.*?\]\(.*?\)/g, '').trim()
+    const utt = new SpeechSynthesisUtterance(clean)
+    utt.lang = 'it-IT'
+    utt.rate = 1.05
+    utt.onstart = () => setIsSpeaking(true)
+    utt.onend = () => setIsSpeaking(false)
+    utt.onerror = () => setIsSpeaking(false)
+    speechSynthRef.current = utt
+    window.speechSynthesis.speak(utt)
+  }
+
+  function stopSpeaking() {
+    window.speechSynthesis?.cancel()
+    setIsSpeaking(false)
   }
 
   return (
@@ -748,7 +796,7 @@ export default function ChatPage() {
 
         {/* Input */}
         <div className={`border-t ${theme.headerBorder} px-4 py-3 bg-white`}>
-          <div className={`flex items-end gap-2 ${theme.inputBg} border ${theme.inputBorder} rounded-2xl px-3 py-2`}>
+          <div className={`flex items-end gap-2 ${theme.inputBg} border ${isRecording ? 'border-red-400' : theme.inputBorder} rounded-2xl px-3 py-2 transition-colors`}>
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={uploading}
@@ -772,11 +820,47 @@ export default function ChatPage() {
               value={input}
               onChange={handleTextareaChange}
               onKeyDown={handleKeyDown}
-              placeholder={`Scrivi un messaggio${ambitoAttivo ? ` — ${ambitoConfig?.label}` : ''}...`}
+              placeholder={isRecording ? '🎙️ Sto ascoltando...' : `Scrivi un messaggio${ambitoAttivo ? ` — ${ambitoConfig?.label}` : ''}...`}
               rows={1}
               className="flex-1 bg-transparent text-sm text-gray-900 placeholder-gray-400 resize-none focus:outline-none py-1"
               style={{ maxHeight: '160px' }}
             />
+            {/* Microfono — tieni premuto */}
+            <button
+              onPointerDown={startRecording}
+              onPointerUp={stopRecording}
+              onPointerLeave={stopRecording}
+              className={`w-8 h-8 flex items-center justify-center rounded-xl transition-colors flex-shrink-0 select-none ${
+                isRecording ? 'bg-red-500 text-white animate-pulse' : 'text-gray-400 hover:text-gray-600'
+              }`}
+              title="Tieni premuto per registrare"
+            >
+              <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+                <rect x="5" y="1" width="5" height="8" rx="2.5" fill="currentColor"/>
+                <path d="M2.5 7.5C2.5 10.261 4.739 12.5 7.5 12.5C10.261 12.5 12.5 10.261 12.5 7.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+                <line x1="7.5" y1="12.5" x2="7.5" y2="14.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+              </svg>
+            </button>
+            {/* TTS toggle */}
+            <button
+              onClick={() => { if (isSpeaking) stopSpeaking(); else setTtsEnabled(p => !p) }}
+              className={`w-8 h-8 flex items-center justify-center rounded-xl transition-colors flex-shrink-0 ${
+                isSpeaking ? 'bg-blue-500 text-white animate-pulse' : ttsEnabled ? 'text-blue-500' : 'text-gray-300 hover:text-gray-500'
+              }`}
+              title={isSpeaking ? 'Interrompi lettura' : ttsEnabled ? 'TTS attivo — clicca per disattivare' : 'Attiva lettura ad alta voce'}
+            >
+              <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+                <path d="M2 5H5L9 2V13L5 10H2V5Z" fill="currentColor"/>
+                {ttsEnabled || isSpeaking ? (
+                  <>
+                    <path d="M11 4.5C12.3 5.5 12.3 9.5 11 10.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+                    <path d="M12.5 2.5C14.8 4.2 14.8 10.8 12.5 12.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+                  </>
+                ) : (
+                  <path d="M12 5L14 7.5L12 10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+                )}
+              </svg>
+            </button>
             <button
               onClick={sendMessage}
               disabled={!input.trim() || loading}
