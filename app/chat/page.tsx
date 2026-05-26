@@ -117,6 +117,9 @@ export default function ChatPage() {
   const [fileContexts, setFileContexts] = useState<FileContext[]>([])
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [skills, setSkills] = useState<{ id: string; slug: string; label: string; extra_sys: string }[]>([])
+  const [activeSkills, setActiveSkills] = useState<string[]>([])
+  const [showSkills, setShowSkills] = useState(false)
   const [loadingHistory, setLoadingHistory] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -149,7 +152,13 @@ export default function ChatPage() {
       .single()
 
     if (conv) setConversationId(conv.id)
-  }
+      // Carica skill disponibili
+    const { data: publicSkills } = await supabase
+      .from('skills')
+      .select('id, slug, label, extra_sys')
+      .eq('pubblica', true)
+    if (publicSkills) setSkills(publicSkills)
+      }
 
   async function loadConversations() {
     setLoadingHistory(true)
@@ -263,7 +272,12 @@ export default function ChatPage() {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: newMessages, conversation_id: conversationId, file_contexts: sentFiles }),
+        body: JSON.stringify({ 
+  messages: newMessages, 
+  conversation_id: conversationId, 
+  file_contexts: sentFiles,
+  active_skill_slugs: activeSkills,
+}),
       })
       const data = await res.json()
       if (data.message) {
@@ -422,7 +436,36 @@ export default function ChatPage() {
           )}
           <div ref={bottomRef} />
         </div>
-
+{/* Skill selector */}
+{skills.length > 0 && (
+  <div className="px-4 pb-2">
+    <div className="flex items-center gap-2 flex-wrap">
+      <button
+        onClick={() => setShowSkills(!showSkills)}
+        className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1"
+      >
+        ✦ Skill {activeSkills.length > 0 && `(${activeSkills.length})`}
+      </button>
+      {showSkills && skills.map(skill => (
+        <button
+          key={skill.id}
+          onClick={() => setActiveSkills(prev =>
+            prev.includes(skill.slug)
+              ? prev.filter(s => s !== skill.slug)
+              : [...prev, skill.slug]
+          )}
+          className={`text-xs px-3 py-1.5 rounded-full border transition-all ${
+            activeSkills.includes(skill.slug)
+              ? 'bg-gray-900 text-white border-gray-900'
+              : 'bg-white text-gray-600 border-gray-200 hover:border-gray-400'
+          }`}
+        >
+          {skill.label}
+        </button>
+      ))}
+    </div>
+  </div>
+)}
         {/* File allegati */}
         {fileContexts.length > 0 && (
           <div className="px-4 pb-2 flex flex-wrap gap-2">
