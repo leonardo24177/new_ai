@@ -527,15 +527,19 @@ export default function ChatPage() {
               ✏️
             </button>
             <button onClick={() => router.push('/profile')}
-              className={`text-xs ${theme.headerText} opacity-70 active:opacity-100 flex items-center gap-1 px-2 py-1.5 rounded-full bg-white/10 active:bg-white/20 hidden sm:flex`}>
+              className={`text-xs ${theme.headerText} opacity-70 active:opacity-100 flex items-center gap-1 px-2 py-1.5 rounded-full bg-white/10 active:bg-white/20`}>
               👤
             </button>
             {isAdmin && (
               <button onClick={() => router.push('/admin')}
-                className={`text-xs ${theme.headerText} opacity-70 active:opacity-100 flex items-center gap-1 px-2 py-1.5 rounded-full bg-white/10 active:bg-white/20 hidden sm:flex`}>
+                className={`text-xs ${theme.headerText} opacity-70 active:opacity-100 flex items-center gap-1 px-2 py-1.5 rounded-full bg-white/10 active:bg-white/20`}>
                 ⚙️
               </button>
             )}
+            <button onClick={handleLogout}
+              className="text-xs text-red-300 active:text-red-200 flex items-center gap-1 px-2 py-1.5 rounded-full bg-white/10 active:bg-red-500/20">
+              →
+            </button>
           </div>
         </div>
 
