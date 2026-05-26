@@ -6,18 +6,20 @@ import { createClient } from '@/lib/supabase/client'
 import {
   UTILIZZI,
   SPECIALIZZAZIONI,
-  getFontiDefault,
+  getFontiMultiple,
   type Professione,
   type Fonte,
 } from '@/lib/onboarding/config'
 
 type Ambito = 'lavoro' | 'studio' | 'personale'
 
+// Allineato alla struttura reale del DB (onboarding aggiornato)
 interface AmbitoData {
   ambito: Ambito
   professione: string
   utilizzo: string
-  specializzazione: string
+  specializzazioni: string[]        // array, non stringa singola
+  specializzazione_custom: string
   fonti: Fonte[]
   fonti_escluse: string[]
   citazione: string
@@ -80,6 +82,29 @@ function getFileIcon(mime: string) {
   return '📎'
 }
 
+// Normalizza dati dal DB — gestisce sia vecchio (specializzazione: string)
+// che nuovo formato (specializzazioni: string[])
+function normalizeAmbitoData(raw: Record<string, unknown>): AmbitoData {
+  return {
+    ambito: raw.ambito as Ambito,
+    professione: (raw.professione as string) || '',
+    utilizzo: (raw.utilizzo as string) || '',
+    specializzazioni: Array.isArray(raw.specializzazioni)
+      ? raw.specializzazioni as string[]
+      : raw.specializzazione
+        ? [raw.specializzazione as string]
+        : [],
+    specializzazione_custom: (raw.specializzazione_custom as string) || '',
+    fonti: (raw.fonti as Fonte[]) || [],
+    fonti_escluse: (raw.fonti_escluse as string[]) || [],
+    citazione: (raw.citazione as string) || 'sempre',
+    conflitto_fonti: (raw.conflitto_fonti as string) || 'gerarchia',
+    tono: (raw.tono as string) || 'formale',
+    livello_studio: (raw.livello_studio as string) || '',
+    uso_personale: (raw.uso_personale as string) || '',
+  }
+}
+
 export default function ProfilePage() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
@@ -105,40 +130,28 @@ export default function ProfilePage() {
     setNomeUtente(user.user_metadata?.nome || user.email?.split('@')[0] || '')
 
     const { data: ambiti } = await supabase
-      .from('user_ambiti')
-      .select('*')
-      .eq('user_id', user.id)
-      .eq('attivo', true)
+      .from('user_ambiti').select('*').eq('user_id', user.id).eq('attivo', true)
 
     if (ambiti && ambiti.length > 0) {
-      setAmbitiData(ambiti.map(a => a.onboarding_data as AmbitoData))
+      // normalizeAmbitoData gestisce sia vecchio che nuovo formato
+      setAmbitiData(ambiti.map(a => normalizeAmbitoData(a.onboarding_data)))
       setActiveAmbito(ambiti[0].onboarding_data.ambito)
     }
 
     const { data: config } = await supabase
-      .from('user_configs')
-      .select('system_prompt_base')
-      .eq('user_id', user.id)
-      .single()
-
+      .from('user_configs').select('system_prompt_base').eq('user_id', user.id).single()
     if (config) setSystemPrompt(config.system_prompt_base)
 
     const { data: files } = await supabase
-      .from('user_files')
-      .select('*')
-      .eq('user_id', user.id)
-      .eq('tipo_contesto', 'profile')
-      .order('created_at', { ascending: false })
-
+      .from('user_files').select('*').eq('user_id', user.id)
+      .eq('tipo_contesto', 'profile').order('created_at', { ascending: false })
     if (files) setProfileFiles(files)
 
     setLoading(false)
   }
 
   function updateAmbitoField(ambito: Ambito, field: keyof AmbitoData, value: unknown) {
-    setAmbitiData(prev => prev.map(a =>
-      a.ambito === ambito ? { ...a, [field]: value } : a
-    ))
+    setAmbitiData(prev => prev.map(a => a.ambito === ambito ? { ...a, [field]: value } : a))
   }
 
   function toggleEscludi(ambito: Ambito, fonteId: string) {
@@ -165,6 +178,13 @@ export default function ProfilePage() {
   }
   function onDragEnd() { setDragIndex(null) }
 
+  // Aggiorna le fonti quando cambiano utilizzo o specializzazioni
+  function refreshFonti(ambito: Ambito, professione: string, utilizzo: string, specializzazioni: string[]) {
+    if (!professione || !utilizzo || specializzazioni.length === 0) return
+    const fonti = getFontiMultiple(professione, utilizzo, specializzazioni)
+    if (fonti.length > 0) updateAmbitoField(ambito, 'fonti', fonti)
+  }
+
   async function saveAmbito(ambito: Ambito) {
     setSaving(true)
     try {
@@ -173,8 +193,7 @@ export default function ProfilePage() {
       if (!user) return
       const ad = ambitiData.find(a => a.ambito === ambito)
       if (!ad) return
-      await supabase
-        .from('user_ambiti')
+      await supabase.from('user_ambiti')
         .upsert({ user_id: user.id, ambito, onboarding_data: ad }, { onConflict: 'user_id,ambito' })
       setSuccessMsg('Salvato!')
       setTimeout(() => setSuccessMsg(''), 2000)
@@ -197,8 +216,7 @@ export default function ProfilePage() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
       await supabase.from('user_configs').upsert(
-        { user_id: user.id, system_prompt_base: json.system_prompt },
-        { onConflict: 'user_id' }
+        { user_id: user.id, system_prompt_base: json.system_prompt }, { onConflict: 'user_id' }
       )
       for (let i = 0; i < ambitiData.length; i++) {
         await supabase.from('user_ambiti').upsert({
@@ -260,16 +278,12 @@ export default function ProfilePage() {
   return (
     <div className="min-h-screen bg-gray-50" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
 
-      {/* Header — mobile safe area top */}
-      <div
-        className="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between sticky top-0 z-10"
-        style={{ paddingTop: 'max(12px, env(safe-area-inset-top))' }}
-      >
+      {/* Header */}
+      <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between sticky top-0 z-10"
+        style={{ paddingTop: 'max(12px, env(safe-area-inset-top))' }}>
         <div className="flex items-center gap-3">
-          <button
-            onClick={() => router.push('/chat')}
-            className="w-9 h-9 flex items-center justify-center text-gray-400 active:text-gray-600 rounded-xl"
-          >
+          <button onClick={() => router.push('/chat')}
+            className="w-9 h-9 flex items-center justify-center text-gray-400 active:text-gray-600 rounded-xl">
             ←
           </button>
           <div>
@@ -277,29 +291,16 @@ export default function ProfilePage() {
             <p className="text-xs text-gray-400">{nomeUtente}</p>
           </div>
         </div>
-        {successMsg && (
-          <span className="text-sm text-green-600 font-medium">{successMsg}</span>
-        )}
+        {successMsg && <span className="text-sm text-green-600 font-medium">{successMsg}</span>}
       </div>
 
       <div className="max-w-2xl mx-auto px-4 py-4">
 
-        {/* Tab navigazione — scrollabile su mobile */}
-        <div className="flex gap-1 bg-gray-100 rounded-xl p-1 mb-5 overflow-x-auto scrollbar-none">
-          {[
-            { key: 'ambiti', label: 'Ambiti' },
-            { key: 'file', label: 'File' },
-            { key: 'prompt', label: 'System Prompt' },
-          ].map(tab => (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key as 'ambiti' | 'file' | 'prompt')}
-              className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
-                activeTab === tab.key
-                  ? 'bg-white text-gray-900 shadow-sm'
-                  : 'text-gray-500'
-              }`}
-            >
+        {/* Tab */}
+        <div className="flex gap-1 bg-gray-100 rounded-xl p-1 mb-5 overflow-x-auto" style={{ msOverflowStyle: 'none', scrollbarWidth: 'none' }}>
+          {[{ key: 'ambiti', label: 'Ambiti' }, { key: 'file', label: 'File' }, { key: 'prompt', label: 'System Prompt' }].map(tab => (
+            <button key={tab.key} onClick={() => setActiveTab(tab.key as 'ambiti' | 'file' | 'prompt')}
+              className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${activeTab === tab.key ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}>
               {tab.label}
             </button>
           ))}
@@ -309,21 +310,15 @@ export default function ProfilePage() {
         {activeTab === 'ambiti' && (
           <div>
             {/* Selettore ambito */}
-            <div className="flex gap-2 mb-5 overflow-x-auto scrollbar-none pb-1">
+            <div className="flex gap-2 mb-5 overflow-x-auto pb-1" style={{ msOverflowStyle: 'none', scrollbarWidth: 'none' }}>
               {ambitiData.map(ad => {
                 const config = AMBITI_CONFIG.find(a => a.value === ad.ambito)
                 return (
-                  <button
-                    key={ad.ambito}
-                    onClick={() => setActiveAmbito(ad.ambito)}
+                  <button key={ad.ambito} onClick={() => setActiveAmbito(ad.ambito)}
                     className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm font-medium transition-all whitespace-nowrap flex-shrink-0 ${
-                      activeAmbito === ad.ambito
-                        ? 'border-gray-900 bg-gray-900 text-white'
-                        : 'border-gray-200 bg-white text-gray-700'
-                    }`}
-                  >
-                    <span>{config?.emoji}</span>
-                    <span>{config?.label}</span>
+                      activeAmbito === ad.ambito ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-200 bg-white text-gray-700'
+                    }`}>
+                    <span>{config?.emoji}</span><span>{config?.label}</span>
                   </button>
                 )
               })}
@@ -332,7 +327,7 @@ export default function ProfilePage() {
             {currentAmbito && (
               <div className="space-y-4">
 
-                {/* LAVORO */}
+                {/* ── LAVORO ── */}
                 {currentAmbito.ambito === 'lavoro' && (
                   <>
                     {/* Professione */}
@@ -340,22 +335,19 @@ export default function ProfilePage() {
                       <h3 className="text-sm font-semibold text-gray-900 mb-3">Professione</h3>
                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                         {PROFESSIONI.map(p => (
-                          <button
-                            key={p.value}
+                          <button key={p.value}
                             onClick={() => {
                               updateAmbitoField('lavoro', 'professione', p.value)
                               updateAmbitoField('lavoro', 'utilizzo', '')
-                              updateAmbitoField('lavoro', 'specializzazione', '')
+                              updateAmbitoField('lavoro', 'specializzazioni', [])
                               updateAmbitoField('lavoro', 'fonti', [])
                             }}
                             className={`flex flex-col items-center gap-1 px-3 py-3 rounded-xl border text-xs font-medium transition-all ${
                               currentAmbito.professione === p.value
                                 ? 'border-gray-900 bg-gray-900 text-white'
-                                : 'border-gray-200 hover:border-gray-400 text-gray-700'
-                            }`}
-                          >
-                            <span className="text-lg">{p.emoji}</span>
-                            {p.label}
+                                : 'border-gray-200 text-gray-700'
+                            }`}>
+                            <span className="text-lg">{p.emoji}</span>{p.label}
                           </button>
                         ))}
                       </div>
@@ -367,20 +359,17 @@ export default function ProfilePage() {
                         <h3 className="text-sm font-semibold text-gray-900 mb-3">Utilizzo principale</h3>
                         <div className="space-y-2">
                           {UTILIZZI[currentAmbito.professione as Professione]?.map(u => (
-                            <button
-                              key={u.value}
+                            <button key={u.value}
                               onClick={() => {
                                 updateAmbitoField('lavoro', 'utilizzo', u.value)
-                                updateAmbitoField('lavoro', 'specializzazione', '')
-                                const fonti = getFontiDefault(currentAmbito.professione, u.value, '')
-                                updateAmbitoField('lavoro', 'fonti', fonti)
+                                updateAmbitoField('lavoro', 'specializzazioni', [])
+                                updateAmbitoField('lavoro', 'fonti', [])
                               }}
                               className={`w-full px-4 py-3 rounded-xl border text-sm font-medium text-left transition-all ${
                                 currentAmbito.utilizzo === u.value
                                   ? 'border-gray-900 bg-gray-900 text-white'
-                                  : 'border-gray-200 hover:border-gray-400 text-gray-700'
-                              }`}
-                            >
+                                  : 'border-gray-200 text-gray-700'
+                              }`}>
                               {u.label}
                             </button>
                           ))}
@@ -388,29 +377,39 @@ export default function ProfilePage() {
                       </div>
                     )}
 
-                    {/* Specializzazione */}
+                    {/* Specializzazione — multipla */}
                     {currentAmbito.utilizzo && SPECIALIZZAZIONI[`${currentAmbito.professione}_${currentAmbito.utilizzo}`]?.length > 0 && (
                       <div className="bg-white rounded-2xl border border-gray-200 p-4">
-                        <h3 className="text-sm font-semibold text-gray-900 mb-3">Specializzazione</h3>
+                        <h3 className="text-sm font-semibold text-gray-900 mb-1">Specializzazione</h3>
+                        <p className="text-xs text-gray-400 mb-3">Puoi selezionarne più di una</p>
                         <div className="space-y-2">
-                          {SPECIALIZZAZIONI[`${currentAmbito.professione}_${currentAmbito.utilizzo}`].map(s => (
-                            <button
-                              key={s.value}
-                              onClick={() => {
-                                updateAmbitoField('lavoro', 'specializzazione', s.value)
-                                const fonti = getFontiDefault(currentAmbito.professione, currentAmbito.utilizzo, s.value)
-                                updateAmbitoField('lavoro', 'fonti', fonti)
-                              }}
-                              className={`w-full px-4 py-3 rounded-xl border text-sm font-medium text-left transition-all ${
-                                currentAmbito.specializzazione === s.value
-                                  ? 'border-gray-900 bg-gray-900 text-white'
-                                  : 'border-gray-200 hover:border-gray-400 text-gray-700'
-                              }`}
-                            >
-                              {s.label}
-                            </button>
-                          ))}
+                          {SPECIALIZZAZIONI[`${currentAmbito.professione}_${currentAmbito.utilizzo}`].map(s => {
+                            const selected = (currentAmbito.specializzazioni || []).includes(s.value)
+                            return (
+                              <button key={s.value}
+                                onClick={() => {
+                                  const curr = currentAmbito.specializzazioni || []
+                                  const next = selected
+                                    ? curr.filter(x => x !== s.value)
+                                    : [...curr, s.value]
+                                  updateAmbitoField('lavoro', 'specializzazioni', next)
+                                  refreshFonti('lavoro', currentAmbito.professione, currentAmbito.utilizzo, next)
+                                }}
+                                className={`w-full px-4 py-3 rounded-xl border text-sm font-medium text-left flex items-center justify-between transition-all ${
+                                  selected ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-200 text-gray-700'
+                                }`}>
+                                <span>{s.label}</span>
+                                {selected && <span>✓</span>}
+                              </button>
+                            )
+                          })}
                         </div>
+                        {currentAmbito.specializzazione_custom !== undefined && (
+                          <input type="text" value={currentAmbito.specializzazione_custom || ''}
+                            onChange={e => updateAmbitoField('lavoro', 'specializzazione_custom', e.target.value)}
+                            placeholder="Altra specializzazione..."
+                            className="mt-3 w-full border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                        )}
                       </div>
                     )}
 
@@ -421,31 +420,18 @@ export default function ProfilePage() {
                         <p className="text-xs text-gray-400 mb-4">Trascina per riordinare</p>
                         <div className="space-y-2">
                           {currentAmbito.fonti.map((fonte, index) => (
-                            <div
-                              key={fonte.id}
-                              draggable
+                            <div key={fonte.id} draggable
                               onDragStart={() => onDragStart(index)}
                               onDragOver={e => onDragOver(e, index, 'lavoro')}
                               onDragEnd={onDragEnd}
-                              className={`flex items-center gap-3 px-4 py-3 rounded-xl border cursor-grab transition-all ${
-                                dragIndex === index ? 'opacity-50' : ''
-                              } ${currentAmbito.fonti_escluse.includes(fonte.id) ? 'border-red-200 bg-red-50' : 'border-gray-200'}`}
-                            >
+                              className={`flex items-center gap-3 px-4 py-3 rounded-xl border cursor-grab transition-all ${dragIndex === index ? 'opacity-50' : ''} ${currentAmbito.fonti_escluse.includes(fonte.id) ? 'border-red-200 bg-red-50' : 'border-gray-200'}`}>
                               <span className="text-gray-300 text-sm font-mono">{index + 1}</span>
                               <div className="flex-1 min-w-0">
-                                <p className={`text-sm font-medium ${currentAmbito.fonti_escluse.includes(fonte.id) ? 'line-through text-gray-400' : 'text-gray-900'}`}>
-                                  {fonte.label}
-                                </p>
+                                <p className={`text-sm font-medium ${currentAmbito.fonti_escluse.includes(fonte.id) ? 'line-through text-gray-400' : 'text-gray-900'}`}>{fonte.label}</p>
                                 {fonte.descrizione && <p className="text-xs text-gray-400 truncate">{fonte.descrizione}</p>}
                               </div>
-                              <button
-                                onClick={() => toggleEscludi('lavoro', fonte.id)}
-                                className={`text-xs px-2.5 py-1.5 rounded-lg flex-shrink-0 ${
-                                  currentAmbito.fonti_escluse.includes(fonte.id)
-                                    ? 'bg-red-100 text-red-600'
-                                    : 'bg-gray-100 text-gray-500'
-                                }`}
-                              >
+                              <button onClick={() => toggleEscludi('lavoro', fonte.id)}
+                                className={`text-xs px-2.5 py-1.5 rounded-lg flex-shrink-0 ${currentAmbito.fonti_escluse.includes(fonte.id) ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-500'}`}>
                                 {currentAmbito.fonti_escluse.includes(fonte.id) ? 'Ripristina' : 'Escludi'}
                               </button>
                               <span className="text-gray-300 flex-shrink-0">⠿</span>
@@ -455,24 +441,13 @@ export default function ProfilePage() {
                       </div>
                     )}
 
-                    {/* Citazione e conflitto */}
+                    {/* Citazione */}
                     <div className="bg-white rounded-2xl border border-gray-200 p-4">
                       <h3 className="text-sm font-semibold text-gray-900 mb-3">Citazione fonti</h3>
                       <div className="space-y-2">
-                        {[
-                          { value: 'sempre', label: 'Sempre con riferimento preciso' },
-                          { value: 'essenziale', label: 'Solo quando essenziale' },
-                          { value: 'mai', label: 'Mai — solo contenuto' },
-                        ].map(c => (
-                          <button
-                            key={c.value}
-                            onClick={() => updateAmbitoField('lavoro', 'citazione', c.value)}
-                            className={`w-full px-4 py-3 rounded-xl border text-sm text-left transition-all ${
-                              currentAmbito.citazione === c.value
-                                ? 'border-gray-900 bg-gray-900 text-white'
-                                : 'border-gray-200 hover:border-gray-400 text-gray-700'
-                            }`}
-                          >
+                        {[{ value: 'sempre', label: 'Sempre con riferimento preciso' }, { value: 'essenziale', label: 'Solo quando essenziale' }, { value: 'mai', label: 'Mai — solo contenuto' }].map(c => (
+                          <button key={c.value} onClick={() => updateAmbitoField('lavoro', 'citazione', c.value)}
+                            className={`w-full px-4 py-3 rounded-xl border text-sm text-left transition-all ${currentAmbito.citazione === c.value ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-200 text-gray-700'}`}>
                             {c.label}
                           </button>
                         ))}
@@ -481,21 +456,14 @@ export default function ProfilePage() {
                   </>
                 )}
 
-                {/* STUDIO */}
+                {/* ── STUDIO ── */}
                 {currentAmbito.ambito === 'studio' && (
                   <div className="bg-white rounded-2xl border border-gray-200 p-4">
                     <h3 className="text-sm font-semibold text-gray-900 mb-3">Livello scolastico</h3>
                     <div className="space-y-2">
                       {STUDI.map(s => (
-                        <button
-                          key={s.value}
-                          onClick={() => updateAmbitoField('studio', 'livello_studio', s.value)}
-                          className={`w-full px-4 py-3 rounded-xl border text-sm font-medium text-left transition-all ${
-                            currentAmbito.livello_studio === s.value
-                              ? 'border-gray-900 bg-gray-900 text-white'
-                              : 'border-gray-200 hover:border-gray-400 text-gray-700'
-                          }`}
-                        >
+                        <button key={s.value} onClick={() => updateAmbitoField('studio', 'livello_studio', s.value)}
+                          className={`w-full px-4 py-3 rounded-xl border text-sm font-medium text-left transition-all ${currentAmbito.livello_studio === s.value ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-200 text-gray-700'}`}>
                           {s.label}
                         </button>
                       ))}
@@ -503,21 +471,14 @@ export default function ProfilePage() {
                   </div>
                 )}
 
-                {/* PERSONALE */}
+                {/* ── PERSONALE ── */}
                 {currentAmbito.ambito === 'personale' && (
                   <div className="bg-white rounded-2xl border border-gray-200 p-4">
                     <h3 className="text-sm font-semibold text-gray-900 mb-3">Uso principale</h3>
                     <div className="space-y-2">
                       {['Organizzazione', 'Scrittura', 'Ricerca', 'Hobby', 'Benessere'].map(u => (
-                        <button
-                          key={u}
-                          onClick={() => updateAmbitoField('personale', 'uso_personale', u.toLowerCase())}
-                          className={`w-full px-4 py-3 rounded-xl border text-sm font-medium text-left transition-all ${
-                            currentAmbito.uso_personale === u.toLowerCase()
-                              ? 'border-gray-900 bg-gray-900 text-white'
-                              : 'border-gray-200 hover:border-gray-400 text-gray-700'
-                          }`}
-                        >
+                        <button key={u} onClick={() => updateAmbitoField('personale', 'uso_personale', u.toLowerCase())}
+                          className={`w-full px-4 py-3 rounded-xl border text-sm font-medium text-left transition-all ${currentAmbito.uso_personale === u.toLowerCase() ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-200 text-gray-700'}`}>
                           {u}
                         </button>
                       ))}
@@ -530,15 +491,8 @@ export default function ProfilePage() {
                   <h3 className="text-sm font-semibold text-gray-900 mb-3">Tono</h3>
                   <div className="space-y-2">
                     {TONI.map(t => (
-                      <button
-                        key={t.value}
-                        onClick={() => updateAmbitoField(currentAmbito.ambito, 'tono', t.value)}
-                        className={`w-full px-4 py-3 rounded-xl border text-sm font-medium text-left transition-all ${
-                          currentAmbito.tono === t.value
-                            ? 'border-gray-900 bg-gray-900 text-white'
-                            : 'border-gray-200 hover:border-gray-400 text-gray-700'
-                        }`}
-                      >
+                      <button key={t.value} onClick={() => updateAmbitoField(currentAmbito.ambito, 'tono', t.value)}
+                        className={`w-full px-4 py-3 rounded-xl border text-sm font-medium text-left transition-all ${currentAmbito.tono === t.value ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-200 text-gray-700'}`}>
                         {t.label}
                       </button>
                     ))}
@@ -547,19 +501,13 @@ export default function ProfilePage() {
 
                 {/* Bottoni azione */}
                 <div className="flex gap-3 pb-4">
-                  <button
-                    onClick={() => saveAmbito(currentAmbito.ambito)}
-                    disabled={saving}
-                    className="flex-1 bg-gray-900 text-white rounded-xl py-3.5 text-sm font-medium active:bg-gray-800 disabled:opacity-40 transition-colors"
-                  >
+                  <button onClick={() => saveAmbito(currentAmbito.ambito)} disabled={saving}
+                    className="flex-1 bg-gray-900 text-white rounded-xl py-3.5 text-sm font-medium active:bg-gray-800 disabled:opacity-40 transition-colors">
                     {saving ? 'Salvo...' : 'Salva modifiche'}
                   </button>
-                  <button
-                    onClick={regeneratePrompt}
-                    disabled={saving}
+                  <button onClick={regeneratePrompt} disabled={saving}
                     className="px-4 py-3.5 border border-gray-200 rounded-xl text-sm text-gray-600 active:border-gray-400 disabled:opacity-40 transition-colors"
-                    title="Rigenera il system prompt"
-                  >
+                    title="Rigenera il system prompt">
                     🔄
                   </button>
                 </div>
@@ -576,23 +524,14 @@ export default function ProfilePage() {
                 <h2 className="text-sm font-semibold text-gray-900">File permanenti</h2>
                 <p className="text-xs text-gray-400 mt-0.5">Disponibili in tutte le conversazioni</p>
               </div>
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                disabled={uploading}
-                className="flex items-center gap-2 bg-gray-900 text-white px-4 py-2.5 rounded-xl text-sm font-medium active:bg-gray-800 disabled:opacity-40 transition-colors"
-              >
+              <button onClick={() => fileInputRef.current?.click()} disabled={uploading}
+                className="flex items-center gap-2 bg-gray-900 text-white px-4 py-2.5 rounded-xl text-sm font-medium active:bg-gray-800 disabled:opacity-40 transition-colors">
                 {uploading ? '...' : '+ Aggiungi'}
               </button>
             </div>
-
-            <input
-              ref={fileInputRef}
-              type="file"
+            <input ref={fileInputRef} type="file"
               accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.jpg,.jpeg,.png,.webp"
-              onChange={handleFileUpload}
-              className="hidden"
-            />
-
+              onChange={handleFileUpload} className="hidden" />
             {profileFiles.length === 0 ? (
               <div className="bg-white rounded-2xl border border-gray-200 p-8 text-center">
                 <p className="text-gray-400 text-sm">Nessun file caricato</p>
@@ -607,12 +546,8 @@ export default function ProfilePage() {
                       <p className="text-sm font-medium text-gray-900 truncate">{f.nome}</p>
                       <p className="text-xs text-gray-400">{formatSize(f.dimensione)}</p>
                     </div>
-                    <button
-                      onClick={() => deleteFile(f.id, f.storage_path)}
-                      className="text-gray-300 active:text-red-500 transition-colors text-lg p-1"
-                    >
-                      🗑
-                    </button>
+                    <button onClick={() => deleteFile(f.id, f.storage_path)}
+                      className="text-gray-300 active:text-red-500 transition-colors text-lg p-1">🗑</button>
                   </div>
                 ))}
               </div>
@@ -628,21 +563,14 @@ export default function ProfilePage() {
                 <h2 className="text-sm font-semibold text-gray-900">System prompt attivo</h2>
                 <p className="text-xs text-gray-400 mt-0.5">Generato automaticamente</p>
               </div>
-              <button
-                onClick={regeneratePrompt}
-                disabled={saving}
-                className="flex items-center gap-2 border border-gray-200 text-gray-600 px-3 py-2 rounded-xl text-sm active:border-gray-400 disabled:opacity-40 transition-colors"
-              >
+              <button onClick={regeneratePrompt} disabled={saving}
+                className="flex items-center gap-2 border border-gray-200 text-gray-600 px-3 py-2 rounded-xl text-sm active:border-gray-400 disabled:opacity-40 transition-colors">
                 🔄 {saving ? 'Rigenerando...' : 'Rigenera'}
               </button>
             </div>
             <div className="bg-white rounded-2xl border border-gray-200 p-4">
-              <textarea
-                value={systemPrompt}
-                onChange={e => setSystemPrompt(e.target.value)}
-                rows={14}
-                className="w-full text-sm text-gray-900 font-mono leading-relaxed resize-none focus:outline-none"
-              />
+              <textarea value={systemPrompt} onChange={e => setSystemPrompt(e.target.value)}
+                rows={14} className="w-full text-sm text-gray-900 font-mono leading-relaxed resize-none focus:outline-none" />
             </div>
             <button
               onClick={async () => {
@@ -651,8 +579,7 @@ export default function ProfilePage() {
                 const { data: { user } } = await supabase.auth.getUser()
                 if (user) {
                   await supabase.from('user_configs').upsert(
-                    { user_id: user.id, system_prompt_base: systemPrompt },
-                    { onConflict: 'user_id' }
+                    { user_id: user.id, system_prompt_base: systemPrompt }, { onConflict: 'user_id' }
                   )
                   setSuccessMsg('Salvato!')
                   setTimeout(() => setSuccessMsg(''), 2000)
@@ -660,8 +587,7 @@ export default function ProfilePage() {
                 setSaving(false)
               }}
               disabled={saving}
-              className="mt-3 w-full bg-gray-900 text-white rounded-xl py-3.5 text-sm font-medium active:bg-gray-800 disabled:opacity-40 transition-colors"
-            >
+              className="mt-3 w-full bg-gray-900 text-white rounded-xl py-3.5 text-sm font-medium active:bg-gray-800 disabled:opacity-40 transition-colors">
               {saving ? 'Salvo...' : 'Salva system prompt'}
             </button>
           </div>
