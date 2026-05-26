@@ -10,8 +10,12 @@ interface Message {
   content: string
 }
 
-function isWarning(content: string) {
-  return content.startsWith('⚠️ FONTE NON VERIFICATA')
+interface FileContext {
+  id: string
+  nome: string
+  testo: string
+  mime_type: string
+  dimensione: number
 }
 
 function MessageBubble({ message }: { message: Message }) {
@@ -35,13 +39,11 @@ function MessageBubble({ message }: { message: Message }) {
             <p className="text-sm text-amber-800 font-medium">{warningText}</p>
           </div>
         )}
-        <div
-          className={`px-4 py-3 rounded-2xl text-sm leading-relaxed ${
-            isUser
-              ? 'bg-gray-900 text-white rounded-br-sm'
-              : 'bg-gray-100 text-gray-900 rounded-bl-sm'
-          }`}
-        >
+        <div className={`px-4 py-3 rounded-2xl text-sm leading-relaxed ${
+          isUser
+            ? 'bg-gray-900 text-white rounded-br-sm'
+            : 'bg-gray-100 text-gray-900 rounded-bl-sm'
+        }`}>
           {isUser ? (
             <span className="whitespace-pre-wrap">{mainContent}</span>
           ) : (
@@ -57,19 +59,13 @@ function MessageBubble({ message }: { message: Message }) {
                 h2: ({ children }) => <h2 className="text-sm font-bold mb-2">{children}</h2>,
                 h3: ({ children }) => <h3 className="text-sm font-semibold mb-1">{children}</h3>,
                 code: ({ children }) => (
-                  <code className="bg-gray-200 text-gray-800 px-1.5 py-0.5 rounded text-xs font-mono">
-                    {children}
-                  </code>
+                  <code className="bg-gray-200 text-gray-800 px-1.5 py-0.5 rounded text-xs font-mono">{children}</code>
                 ),
                 pre: ({ children }) => (
-                  <pre className="bg-gray-200 text-gray-800 p-3 rounded-lg text-xs font-mono overflow-x-auto mb-2">
-                    {children}
-                  </pre>
+                  <pre className="bg-gray-200 text-gray-800 p-3 rounded-lg text-xs font-mono overflow-x-auto mb-2">{children}</pre>
                 ),
                 blockquote: ({ children }) => (
-                  <blockquote className="border-l-2 border-gray-400 pl-3 italic text-gray-600 mb-2">
-                    {children}
-                  </blockquote>
+                  <blockquote className="border-l-2 border-gray-400 pl-3 italic text-gray-600 mb-2">{children}</blockquote>
                 ),
               }}
             >
@@ -82,50 +78,65 @@ function MessageBubble({ message }: { message: Message }) {
   )
 }
 
+function FileChip({ file, onRemove }: { file: FileContext; onRemove: () => void }) {
+  function getIcon() {
+    if (file.mime_type === 'application/pdf') return '📄'
+    if (file.mime_type.includes('word')) return '📝'
+    if (file.mime_type.includes('sheet') || file.mime_type.includes('excel')) return '📊'
+    if (file.mime_type.includes('presentation')) return '📑'
+    if (file.mime_type.startsWith('image/')) return '🖼️'
+    return '📎'
+  }
+
+  function formatSize(bytes: number) {
+    if (bytes < 1024) return `${bytes}B`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)}KB`
+    return `${(bytes / (1024 * 1024)).toFixed(1)}MB`
+  }
+
+  return (
+    <div className="flex items-center gap-2 bg-gray-100 border border-gray-200 rounded-lg px-3 py-2 text-xs">
+      <span>{getIcon()}</span>
+      <span className="text-gray-700 font-medium truncate max-w-[120px]">{file.nome}</span>
+      <span className="text-gray-400">{formatSize(file.dimensione)}</span>
+      <button onClick={onRemove} className="text-gray-400 hover:text-gray-600 ml-1">✕</button>
+    </div>
+  )
+}
+
 export default function ChatPage() {
   const router = useRouter()
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [uploading, setUploading] = useState(false)
   const [conversationId, setConversationId] = useState<string | null>(null)
   const [nomeAssistente, setNomeAssistente] = useState('Assistente')
   const [nomeUtente, setNomeUtente] = useState('')
+  const [fileContexts, setFileContexts] = useState<FileContext[]>([])
   const bottomRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
-  useEffect(() => {
-    initChat()
-  }, [])
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+  useEffect(() => { initChat() }, [])
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
 
   async function initChat() {
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
+    if (!user) { router.push('/login'); return }
 
-    if (!user) {
-      router.push('/login')
-      return
-    }
-
-    // Recupera config utente
     const { data: config } = await supabase
       .from('user_configs')
       .select('nome_assistente')
       .eq('user_id', user.id)
       .single()
 
-    if (!config) {
-      router.push('/onboarding')
-      return
-    }
+    if (!config) { router.push('/onboarding'); return }
 
     setNomeAssistente(config.nome_assistente || 'Assistente')
     setNomeUtente(user.user_metadata?.nome || user.email?.split('@')[0] || '')
 
-    // Crea nuova conversazione
     const { data: conv } = await supabase
       .from('conversations')
       .insert({ user_id: user.id })
@@ -133,6 +144,44 @@ export default function ChatPage() {
       .single()
 
     if (conv) setConversationId(conv.id)
+  }
+
+  async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setUploading(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('tipo_contesto', 'chat')
+
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData,
+      })
+
+      const data = await res.json()
+
+      if (data.error) {
+        alert(`Errore: ${data.error}`)
+        return
+      }
+
+      setFileContexts(prev => [...prev, {
+        id: data.id,
+        nome: data.nome,
+        testo: data.testo_estratto,
+        mime_type: data.mime_type,
+        dimensione: data.dimensione,
+      }])
+    } catch (e) {
+      console.error(e)
+      alert('Errore durante il caricamento')
+    } finally {
+      setUploading(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
   }
 
   async function sendMessage() {
@@ -144,10 +193,10 @@ export default function ChatPage() {
     setInput('')
     setLoading(true)
 
-    // Auto-resize textarea
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto'
-    }
+    const sentFiles = [...fileContexts]
+    setFileContexts([])
+
+    if (textareaRef.current) textareaRef.current.style.height = 'auto'
 
     try {
       const res = await fetch('/api/chat', {
@@ -156,23 +205,17 @@ export default function ChatPage() {
         body: JSON.stringify({
           messages: newMessages,
           conversation_id: conversationId,
+          file_contexts: sentFiles,
         }),
       })
 
       const data = await res.json()
-
       if (data.message) {
-        setMessages(prev => [...prev, {
-          role: 'assistant',
-          content: data.message,
-        }])
+        setMessages(prev => [...prev, { role: 'assistant', content: data.message }])
       }
     } catch (e) {
       console.error(e)
-      setMessages(prev => [...prev, {
-        role: 'assistant',
-        content: 'Si è verificato un errore. Riprova.',
-      }])
+      setMessages(prev => [...prev, { role: 'assistant', content: 'Si è verificato un errore. Riprova.' }])
     } finally {
       setLoading(false)
     }
@@ -185,10 +228,7 @@ export default function ChatPage() {
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      sendMessage()
-    }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage() }
   }
 
   function handleTextareaChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
@@ -208,15 +248,10 @@ export default function ChatPage() {
           </div>
           <div>
             <p className="text-sm font-medium text-gray-900">{nomeAssistente}</p>
-            {nomeUtente && (
-              <p className="text-xs text-gray-400">Ciao, {nomeUtente}</p>
-            )}
+            {nomeUtente && <p className="text-xs text-gray-400">Ciao, {nomeUtente}</p>}
           </div>
         </div>
-        <button
-          onClick={handleLogout}
-          className="text-xs text-gray-400 hover:text-gray-600 transition-colors"
-        >
+        <button onClick={handleLogout} className="text-xs text-gray-400 hover:text-gray-600 transition-colors">
           Esci
         </button>
       </div>
@@ -229,13 +264,11 @@ export default function ChatPage() {
               <span className="text-2xl">✨</span>
             </div>
             <p className="text-gray-900 font-medium mb-1">Come posso aiutarti?</p>
-            <p className="text-gray-400 text-sm">Scrivi un messaggio per iniziare</p>
+            <p className="text-gray-400 text-sm">Scrivi un messaggio o allega un file per iniziare</p>
           </div>
         )}
 
-        {messages.map((msg, i) => (
-          <MessageBubble key={i} message={msg} />
-        ))}
+        {messages.map((msg, i) => <MessageBubble key={i} message={msg} />)}
 
         {loading && (
           <div className="flex justify-start mb-4">
@@ -252,9 +285,50 @@ export default function ChatPage() {
         <div ref={bottomRef} />
       </div>
 
+      {/* File allegati */}
+      {fileContexts.length > 0 && (
+        <div className="px-4 pb-2 flex flex-wrap gap-2">
+          {fileContexts.map(f => (
+            <FileChip
+              key={f.id}
+              file={f}
+              onRemove={() => setFileContexts(prev => prev.filter(fc => fc.id !== f.id))}
+            />
+          ))}
+        </div>
+      )}
+
       {/* Input */}
       <div className="border-t border-gray-100 px-4 py-3">
-        <div className="flex items-end gap-3 bg-gray-50 rounded-2xl px-4 py-3">
+        <div className="flex items-end gap-2 bg-gray-50 rounded-2xl px-3 py-2">
+
+          {/* Bottone upload */}
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-600 disabled:opacity-40 transition-colors flex-shrink-0"
+            title="Allega file"
+          >
+            {uploading ? (
+              <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+              </svg>
+            ) : (
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path d="M2 10V13H14V10M8 2V10M5 5L8 2L11 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            )}
+          </button>
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.jpg,.jpeg,.png,.webp"
+            onChange={handleFileUpload}
+            className="hidden"
+          />
+
           <textarea
             ref={textareaRef}
             value={input}
@@ -262,9 +336,10 @@ export default function ChatPage() {
             onKeyDown={handleKeyDown}
             placeholder="Scrivi un messaggio... (Invio per inviare)"
             rows={1}
-            className="flex-1 bg-transparent text-sm text-gray-900 placeholder-gray-400 resize-none focus:outline-none"
+            className="flex-1 bg-transparent text-sm text-gray-900 placeholder-gray-400 resize-none focus:outline-none py-1"
             style={{ maxHeight: '160px' }}
           />
+
           <button
             onClick={sendMessage}
             disabled={!input.trim() || loading}
@@ -275,9 +350,7 @@ export default function ChatPage() {
             </svg>
           </button>
         </div>
-        <p className="text-xs text-gray-400 text-center mt-2">
-          Shift+Invio per andare a capo
-        </p>
+        <p className="text-xs text-gray-400 text-center mt-2">Shift+Invio per andare a capo</p>
       </div>
     </div>
   )

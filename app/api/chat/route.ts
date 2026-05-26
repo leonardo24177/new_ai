@@ -10,15 +10,14 @@ export async function POST(req: NextRequest) {
   try {
     const supabase = await createClient()
 
-    // 1. Verifica autenticazione
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) {
       return NextResponse.json({ error: 'Non autenticato' }, { status: 401 })
     }
 
-    const { messages, skill_slug, conversation_id } = await req.json()
+    const { messages, skill_slug, conversation_id, file_contexts } = await req.json()
 
-    // 2. Recupera system prompt base dell'utente
+    // 1. Recupera system prompt base
     const { data: config } = await supabase
       .from('user_configs')
       .select('system_prompt_base, nome_assistente')
@@ -27,7 +26,7 @@ export async function POST(req: NextRequest) {
 
     let systemPrompt = config?.system_prompt_base || 'Sei un assistente utile e preciso.'
 
-    // 3. Inietta extra_sys della skill attiva (se presente)
+    // 2. Inietta extra_sys della skill attiva
     if (skill_slug) {
       const { data: skill } = await supabase
         .from('skills')
@@ -40,7 +39,52 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 4. Salva messaggio utente se c'è una conversazione attiva
+    // 3. Inietta testo dei file di profilo (permanenti)
+    const { data: profileFiles } = await supabase
+      .from('user_files')
+      .select('nome, storage_path, mime_type')
+      .eq('user_id', user.id)
+      .eq('tipo_contesto', 'profile')
+
+    // 4. Prepara i messaggi con i file context
+    let messagesWithContext = [...messages]
+
+    // Aggiungi testo dei file al primo messaggio utente come contesto
+    const fileTexts: string[] = []
+
+    // File di profilo
+    if (profileFiles && profileFiles.length > 0) {
+      for (const f of profileFiles) {
+        if (f.storage_path) {
+          fileTexts.push(`[File di profilo: ${f.nome}]`)
+        }
+      }
+    }
+
+    // File della chat corrente (passati dal frontend con testo già estratto)
+    if (file_contexts && file_contexts.length > 0) {
+      for (const fc of file_contexts) {
+        if (fc.testo) {
+          fileTexts.push(`[File allegato: ${fc.nome}]\n${fc.testo}`)
+        } else if (fc.nome) {
+          fileTexts.push(`[File allegato: ${fc.nome}]`)
+        }
+      }
+    }
+
+    // Prepend contesto file all'ultimo messaggio utente
+    if (fileTexts.length > 0 && messagesWithContext.length > 0) {
+      const lastIdx = messagesWithContext.length - 1
+      const last = messagesWithContext[lastIdx]
+      if (last.role === 'user') {
+        messagesWithContext[lastIdx] = {
+          ...last,
+          content: `${fileTexts.join('\n\n')}\n\n---\n\n${last.content}`,
+        }
+      }
+    }
+
+    // 5. Salva messaggio utente originale (senza i file nel testo)
     if (conversation_id) {
       const lastMessage = messages[messages.length - 1]
       if (lastMessage?.role === 'user') {
@@ -52,12 +96,12 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 5. Chiama Claude
+    // 6. Chiama Claude
     const response = await client.messages.create({
       model: 'claude-sonnet-4-5',
       max_tokens: 2048,
       system: systemPrompt,
-      messages: messages.map((m: { role: string; content: string }) => ({
+      messages: messagesWithContext.map((m: { role: string; content: string }) => ({
         role: m.role,
         content: m.content,
       })),
@@ -67,7 +111,7 @@ export async function POST(req: NextRequest) {
       ? response.content[0].text
       : ''
 
-    // 6. Salva risposta assistente
+    // 7. Salva risposta
     if (conversation_id) {
       await supabase.from('messages').insert({
         conversation_id,
