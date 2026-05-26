@@ -461,7 +461,8 @@ export default function ChatPage() {
   }
 
   function startRecording() {
-    const SpeechRecognition = window.SpeechRecognition || (window as unknown as { webkitSpeechRecognition: typeof window.SpeechRecognition }).webkitSpeechRecognition
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
     if (!SpeechRecognition) { toast.error('Il tuo browser non supporta il riconoscimento vocale'); return }
     const recognition = new SpeechRecognition()
     recognition.lang = 'it-IT'
