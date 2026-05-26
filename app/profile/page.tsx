@@ -7,18 +7,18 @@ import {
   UTILIZZI,
   SPECIALIZZAZIONI,
   getFontiMultiple,
+  PROFESSIONI_LIST,
   type Professione,
   type Fonte,
 } from '@/lib/onboarding/config'
 
 type Ambito = 'lavoro' | 'studio' | 'personale'
 
-// Allineato alla struttura reale del DB (onboarding aggiornato)
 interface AmbitoData {
   ambito: Ambito
   professione: string
   utilizzo: string
-  specializzazioni: string[]        // array, non stringa singola
+  specializzazioni: string[]
   specializzazione_custom: string
   fonti: Fonte[]
   fonti_escluse: string[]
@@ -38,40 +38,17 @@ interface UserFile {
   storage_path: string
 }
 
+// Raggruppa professioni per categoria (stesso approccio dell'onboarding)
+const PROFESSIONI_PER_CATEGORIA = PROFESSIONI_LIST.reduce((acc, p) => {
+  if (!acc[p.categoria]) acc[p.categoria] = []
+  acc[p.categoria].push(p)
+  return acc
+}, {} as Record<string, typeof PROFESSIONI_LIST>)
+
 const AMBITI_CONFIG = [
   { value: 'lavoro' as Ambito, label: 'Lavoro', emoji: '💼' },
   { value: 'studio' as Ambito, label: 'Studio', emoji: '📖' },
   { value: 'personale' as Ambito, label: 'Uso personale', emoji: '🏠' },
-]
-
-const PROFESSIONI = [
-  // Legale
-  { value: 'avvocato', label: 'Avvocato', emoji: '⚖️' },
-  { value: 'notaio', label: 'Notaio', emoji: '📜' },
-  { value: 'magistrato', label: 'Magistrato', emoji: '🏛️' },
-  { value: 'consulente_lavoro', label: 'Consulente del lavoro', emoji: '📋' },
-  // Economico
-  { value: 'commercialista', label: 'Commercialista', emoji: '📊' },
-  { value: 'revisore_contabile', label: 'Revisore contabile', emoji: '🔍' },
-  // Sanitario
-  { value: 'medico', label: 'Medico', emoji: '🏥' },
-  { value: 'farmacista', label: 'Farmacista', emoji: '💊' },
-  { value: 'psicologo', label: 'Psicologo', emoji: '🧠' },
-  { value: 'fisioterapista', label: 'Fisioterapista', emoji: '🦴' },
-  // Tecnico
-  { value: 'ingegnere', label: 'Ingegnere', emoji: '⚙️' },
-  { value: 'architetto', label: 'Architetto', emoji: '📐' },
-  { value: 'geometra', label: 'Geometra', emoji: '📏' },
-  // Istruzione
-  { value: 'insegnante', label: 'Insegnante', emoji: '📚' },
-  { value: 'professore_universitario', label: 'Professore universitario', emoji: '🎓' },
-  // Business e comunicazione
-  { value: 'imprenditore', label: 'Imprenditore', emoji: '💼' },
-  { value: 'manager', label: 'Manager / Dirigente', emoji: '👔' },
-  { value: 'libero_professionista', label: 'Libero professionista', emoji: '🖥️' },
-  { value: 'giornalista', label: 'Giornalista', emoji: '📰' },
-  { value: 'ricercatore', label: 'Ricercatore', emoji: '🔬' },
-  { value: 'altro', label: 'Altro', emoji: '👤' },
 ]
 
 const TONI = [
@@ -102,8 +79,6 @@ function getFileIcon(mime: string) {
   return '📎'
 }
 
-// Normalizza dati dal DB — gestisce sia vecchio (specializzazione: string)
-// che nuovo formato (specializzazioni: string[])
 function normalizeAmbitoData(raw: Record<string, unknown>): AmbitoData {
   return {
     ambito: raw.ambito as Ambito,
@@ -111,9 +86,7 @@ function normalizeAmbitoData(raw: Record<string, unknown>): AmbitoData {
     utilizzo: (raw.utilizzo as string) || '',
     specializzazioni: Array.isArray(raw.specializzazioni)
       ? raw.specializzazioni as string[]
-      : raw.specializzazione
-        ? [raw.specializzazione as string]
-        : [],
+      : raw.specializzazione ? [raw.specializzazione as string] : [],
     specializzazione_custom: (raw.specializzazione_custom as string) || '',
     fonti: (raw.fonti as Fonte[]) || [],
     fonti_escluse: (raw.fonti_escluse as string[]) || [],
@@ -151,9 +124,7 @@ export default function ProfilePage() {
 
     const { data: ambiti } = await supabase
       .from('user_ambiti').select('*').eq('user_id', user.id).eq('attivo', true)
-
     if (ambiti && ambiti.length > 0) {
-      // normalizeAmbitoData gestisce sia vecchio che nuovo formato
       setAmbitiData(ambiti.map(a => normalizeAmbitoData(a.onboarding_data)))
       setActiveAmbito(ambiti[0].onboarding_data.ambito)
     }
@@ -198,7 +169,6 @@ export default function ProfilePage() {
   }
   function onDragEnd() { setDragIndex(null) }
 
-  // Aggiorna le fonti quando cambiano utilizzo o specializzazioni
   function refreshFonti(ambito: Ambito, professione: string, utilizzo: string, specializzazioni: string[]) {
     if (!professione || !utilizzo || specializzazioni.length === 0) return
     const fonti = getFontiMultiple(professione, utilizzo, specializzazioni)
@@ -317,10 +287,13 @@ export default function ProfilePage() {
       <div className="max-w-2xl mx-auto px-4 py-4">
 
         {/* Tab */}
-        <div className="flex gap-1 bg-gray-100 rounded-xl p-1 mb-5 overflow-x-auto" style={{ msOverflowStyle: 'none', scrollbarWidth: 'none' }}>
+        <div className="flex gap-1 bg-gray-100 rounded-xl p-1 mb-5"
+          style={{ msOverflowStyle: 'none', scrollbarWidth: 'none' }}>
           {[{ key: 'ambiti', label: 'Ambiti' }, { key: 'file', label: 'File' }, { key: 'prompt', label: 'System Prompt' }].map(tab => (
             <button key={tab.key} onClick={() => setActiveTab(tab.key as 'ambiti' | 'file' | 'prompt')}
-              className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${activeTab === tab.key ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}>
+              className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
+                activeTab === tab.key ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'
+              }`}>
               {tab.label}
             </button>
           ))}
@@ -330,13 +303,16 @@ export default function ProfilePage() {
         {activeTab === 'ambiti' && (
           <div>
             {/* Selettore ambito */}
-            <div className="flex gap-2 mb-5 overflow-x-auto pb-1" style={{ msOverflowStyle: 'none', scrollbarWidth: 'none' }}>
+            <div className="flex gap-2 mb-5 overflow-x-auto pb-1"
+              style={{ msOverflowStyle: 'none', scrollbarWidth: 'none' }}>
               {ambitiData.map(ad => {
                 const config = AMBITI_CONFIG.find(a => a.value === ad.ambito)
                 return (
                   <button key={ad.ambito} onClick={() => setActiveAmbito(ad.ambito)}
                     className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm font-medium transition-all whitespace-nowrap flex-shrink-0 ${
-                      activeAmbito === ad.ambito ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-200 bg-white text-gray-700'
+                      activeAmbito === ad.ambito
+                        ? 'border-gray-900 bg-gray-900 text-white'
+                        : 'border-gray-200 bg-white text-gray-700'
                     }`}>
                     <span>{config?.emoji}</span><span>{config?.label}</span>
                   </button>
@@ -350,48 +326,44 @@ export default function ProfilePage() {
                 {/* ── LAVORO ── */}
                 {currentAmbito.ambito === 'lavoro' && (
                   <>
-                    {/* Professione */}
+                    {/* Professione — raggruppata per categoria, identica all'onboarding */}
                     <div className="bg-white rounded-2xl border border-gray-200 p-4">
-                      <h3 className="text-sm font-semibold text-gray-900 mb-3">Professione</h3>
-                      {[
-                        { label: 'Legale', items: PROFESSIONI.filter(p => ['avvocato','notaio','magistrato','consulente_lavoro'].includes(p.value)) },
-                        { label: 'Economico', items: PROFESSIONI.filter(p => ['commercialista','revisore_contabile'].includes(p.value)) },
-                        { label: 'Sanitario', items: PROFESSIONI.filter(p => ['medico','farmacista','psicologo','fisioterapista'].includes(p.value)) },
-                        { label: 'Tecnico', items: PROFESSIONI.filter(p => ['ingegnere','architetto','geometra'].includes(p.value)) },
-                        { label: 'Istruzione', items: PROFESSIONI.filter(p => ['insegnante','professore_universitario'].includes(p.value)) },
-                        { label: 'Business e altro', items: PROFESSIONI.filter(p => ['imprenditore','manager','libero_professionista','giornalista','ricercatore','altro'].includes(p.value)) },
-                      ].map(cat => (
-                        <div key={cat.label} className="mb-4 last:mb-0">
-                          <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">{cat.label}</p>
-                          <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-                            {cat.items.map(p => (
-                              <button key={p.value}
-                                onClick={() => {
-                                  updateAmbitoField('lavoro', 'professione', p.value)
-                                  updateAmbitoField('lavoro', 'utilizzo', '')
-                                  updateAmbitoField('lavoro', 'specializzazioni', [])
-                                  updateAmbitoField('lavoro', 'fonti', [])
-                                }}
-                                className={`flex flex-col items-center gap-1 px-2 py-3 rounded-xl border text-xs font-medium transition-all text-center ${
-                                  currentAmbito.professione === p.value
-                                    ? 'border-gray-900 bg-gray-900 text-white'
-                                    : 'border-gray-200 text-gray-700'
-                                }`}>
-                                <span className="text-lg">{p.emoji}</span>
-                                <span className="leading-tight">{p.label}</span>
-                              </button>
-                            ))}
+                      <h3 className="text-sm font-semibold text-gray-900 mb-4">Professione</h3>
+                      <div className="space-y-4">
+                        {Object.entries(PROFESSIONI_PER_CATEGORIA).map(([categoria, professioni]) => (
+                          <div key={categoria}>
+                            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 px-1">{categoria}</p>
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                              {professioni.map(p => (
+                                <button key={p.value}
+                                  onClick={() => {
+                                    updateAmbitoField('lavoro', 'professione', p.value)
+                                    updateAmbitoField('lavoro', 'utilizzo', '')
+                                    updateAmbitoField('lavoro', 'specializzazioni', [])
+                                    updateAmbitoField('lavoro', 'fonti', [])
+                                  }}
+                                  className={`flex flex-col items-center gap-1.5 px-3 py-3 rounded-xl border text-xs font-medium transition-all text-center ${
+                                    currentAmbito.professione === p.value
+                                      ? 'border-gray-900 bg-gray-900 text-white'
+                                      : 'border-gray-200 text-gray-700'
+                                  }`}>
+                                  <span className="text-xl">{p.emoji}</span>
+                                  <span className="leading-tight">{p.label}</span>
+                                </button>
+                              ))}
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        ))}
+                      </div>
                     </div>
 
                     {/* Utilizzo */}
-                    {currentAmbito.professione && currentAmbito.professione !== 'altro' && (
+                    {currentAmbito.professione && currentAmbito.professione !== 'altro' &&
+                      UTILIZZI[currentAmbito.professione as Professione]?.length > 0 && (
                       <div className="bg-white rounded-2xl border border-gray-200 p-4">
                         <h3 className="text-sm font-semibold text-gray-900 mb-3">Utilizzo principale</h3>
                         <div className="space-y-2">
-                          {UTILIZZI[currentAmbito.professione as Professione]?.map(u => (
+                          {UTILIZZI[currentAmbito.professione as Professione].map(u => (
                             <button key={u.value}
                               onClick={() => {
                                 updateAmbitoField('lavoro', 'utilizzo', u.value)
@@ -411,11 +383,12 @@ export default function ProfilePage() {
                     )}
 
                     {/* Specializzazione — multipla */}
-                    {currentAmbito.utilizzo && SPECIALIZZAZIONI[`${currentAmbito.professione}_${currentAmbito.utilizzo}`]?.length > 0 && (
+                    {currentAmbito.utilizzo &&
+                      SPECIALIZZAZIONI[`${currentAmbito.professione}_${currentAmbito.utilizzo}`]?.length > 0 && (
                       <div className="bg-white rounded-2xl border border-gray-200 p-4">
                         <h3 className="text-sm font-semibold text-gray-900 mb-1">Specializzazione</h3>
                         <p className="text-xs text-gray-400 mb-3">Puoi selezionarne più di una</p>
-                        <div className="space-y-2">
+                        <div className="space-y-2 max-h-64 overflow-y-auto">
                           {SPECIALIZZAZIONI[`${currentAmbito.professione}_${currentAmbito.utilizzo}`].map(s => {
                             const selected = (currentAmbito.specializzazioni || []).includes(s.value)
                             return (
@@ -437,12 +410,11 @@ export default function ProfilePage() {
                             )
                           })}
                         </div>
-                        {currentAmbito.specializzazione_custom !== undefined && (
-                          <input type="text" value={currentAmbito.specializzazione_custom || ''}
-                            onChange={e => updateAmbitoField('lavoro', 'specializzazione_custom', e.target.value)}
-                            placeholder="Altra specializzazione..."
-                            className="mt-3 w-full border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900" />
-                        )}
+                        <input type="text"
+                          value={currentAmbito.specializzazione_custom || ''}
+                          onChange={e => updateAmbitoField('lavoro', 'specializzazione_custom', e.target.value)}
+                          placeholder="Altra specializzazione..."
+                          className="mt-3 w-full border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900" />
                       </div>
                     )}
 
@@ -457,14 +429,20 @@ export default function ProfilePage() {
                               onDragStart={() => onDragStart(index)}
                               onDragOver={e => onDragOver(e, index, 'lavoro')}
                               onDragEnd={onDragEnd}
-                              className={`flex items-center gap-3 px-4 py-3 rounded-xl border cursor-grab transition-all ${dragIndex === index ? 'opacity-50' : ''} ${currentAmbito.fonti_escluse.includes(fonte.id) ? 'border-red-200 bg-red-50' : 'border-gray-200'}`}>
+                              className={`flex items-center gap-3 px-4 py-3 rounded-xl border cursor-grab transition-all ${
+                                dragIndex === index ? 'opacity-50' : ''
+                              } ${currentAmbito.fonti_escluse.includes(fonte.id) ? 'border-red-200 bg-red-50' : 'border-gray-200'}`}>
                               <span className="text-gray-300 text-sm font-mono">{index + 1}</span>
                               <div className="flex-1 min-w-0">
-                                <p className={`text-sm font-medium ${currentAmbito.fonti_escluse.includes(fonte.id) ? 'line-through text-gray-400' : 'text-gray-900'}`}>{fonte.label}</p>
+                                <p className={`text-sm font-medium ${currentAmbito.fonti_escluse.includes(fonte.id) ? 'line-through text-gray-400' : 'text-gray-900'}`}>
+                                  {fonte.label}
+                                </p>
                                 {fonte.descrizione && <p className="text-xs text-gray-400 truncate">{fonte.descrizione}</p>}
                               </div>
                               <button onClick={() => toggleEscludi('lavoro', fonte.id)}
-                                className={`text-xs px-2.5 py-1.5 rounded-lg flex-shrink-0 ${currentAmbito.fonti_escluse.includes(fonte.id) ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-500'}`}>
+                                className={`text-xs px-2.5 py-1.5 rounded-lg flex-shrink-0 ${
+                                  currentAmbito.fonti_escluse.includes(fonte.id) ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-500'
+                                }`}>
                                 {currentAmbito.fonti_escluse.includes(fonte.id) ? 'Ripristina' : 'Escludi'}
                               </button>
                               <span className="text-gray-300 flex-shrink-0">⠿</span>
@@ -478,9 +456,17 @@ export default function ProfilePage() {
                     <div className="bg-white rounded-2xl border border-gray-200 p-4">
                       <h3 className="text-sm font-semibold text-gray-900 mb-3">Citazione fonti</h3>
                       <div className="space-y-2">
-                        {[{ value: 'sempre', label: 'Sempre con riferimento preciso' }, { value: 'essenziale', label: 'Solo quando essenziale' }, { value: 'mai', label: 'Mai — solo contenuto' }].map(c => (
+                        {[
+                          { value: 'sempre', label: 'Sempre con riferimento preciso' },
+                          { value: 'essenziale', label: 'Solo quando essenziale' },
+                          { value: 'mai', label: 'Mai — solo contenuto' },
+                        ].map(c => (
                           <button key={c.value} onClick={() => updateAmbitoField('lavoro', 'citazione', c.value)}
-                            className={`w-full px-4 py-3 rounded-xl border text-sm text-left transition-all ${currentAmbito.citazione === c.value ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-200 text-gray-700'}`}>
+                            className={`w-full px-4 py-3 rounded-xl border text-sm text-left transition-all ${
+                              currentAmbito.citazione === c.value
+                                ? 'border-gray-900 bg-gray-900 text-white'
+                                : 'border-gray-200 text-gray-700'
+                            }`}>
                             {c.label}
                           </button>
                         ))}
@@ -496,7 +482,11 @@ export default function ProfilePage() {
                     <div className="space-y-2">
                       {STUDI.map(s => (
                         <button key={s.value} onClick={() => updateAmbitoField('studio', 'livello_studio', s.value)}
-                          className={`w-full px-4 py-3 rounded-xl border text-sm font-medium text-left transition-all ${currentAmbito.livello_studio === s.value ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-200 text-gray-700'}`}>
+                          className={`w-full px-4 py-3 rounded-xl border text-sm font-medium text-left transition-all ${
+                            currentAmbito.livello_studio === s.value
+                              ? 'border-gray-900 bg-gray-900 text-white'
+                              : 'border-gray-200 text-gray-700'
+                          }`}>
                           {s.label}
                         </button>
                       ))}
@@ -511,7 +501,11 @@ export default function ProfilePage() {
                     <div className="space-y-2">
                       {['Organizzazione', 'Scrittura', 'Ricerca', 'Hobby', 'Benessere'].map(u => (
                         <button key={u} onClick={() => updateAmbitoField('personale', 'uso_personale', u.toLowerCase())}
-                          className={`w-full px-4 py-3 rounded-xl border text-sm font-medium text-left transition-all ${currentAmbito.uso_personale === u.toLowerCase() ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-200 text-gray-700'}`}>
+                          className={`w-full px-4 py-3 rounded-xl border text-sm font-medium text-left transition-all ${
+                            currentAmbito.uso_personale === u.toLowerCase()
+                              ? 'border-gray-900 bg-gray-900 text-white'
+                              : 'border-gray-200 text-gray-700'
+                          }`}>
                           {u}
                         </button>
                       ))}
@@ -525,7 +519,11 @@ export default function ProfilePage() {
                   <div className="space-y-2">
                     {TONI.map(t => (
                       <button key={t.value} onClick={() => updateAmbitoField(currentAmbito.ambito, 'tono', t.value)}
-                        className={`w-full px-4 py-3 rounded-xl border text-sm font-medium text-left transition-all ${currentAmbito.tono === t.value ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-200 text-gray-700'}`}>
+                        className={`w-full px-4 py-3 rounded-xl border text-sm font-medium text-left transition-all ${
+                          currentAmbito.tono === t.value
+                            ? 'border-gray-900 bg-gray-900 text-white'
+                            : 'border-gray-200 text-gray-700'
+                        }`}>
                         {t.label}
                       </button>
                     ))}
