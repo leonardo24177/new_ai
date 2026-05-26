@@ -4,11 +4,10 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import {
-  OnboardingData,
   Fonte,
   UTILIZZI,
   SPECIALIZZAZIONI,
-  getFontiDefault,
+  getFontiMultiple,
   type Professione,
   type Ambito,
 } from '@/lib/onboarding/config'
@@ -18,7 +17,8 @@ interface AmbitoData {
   ambito: Ambito
   professione: string
   utilizzo: string
-  specializzazione: string
+  specializzazioni: string[]
+  specializzazione_custom: string
   fonti: Fonte[]
   fonti_escluse: string[]
   citazione: 'sempre' | 'essenziale' | 'mai'
@@ -33,7 +33,8 @@ function defaultAmbitoData(ambito: Ambito): AmbitoData {
     ambito,
     professione: '',
     utilizzo: '',
-    specializzazione: '',
+    specializzazioni: [],
+    specializzazione_custom: '',
     fonti: [],
     fonti_escluse: [],
     citazione: 'sempre',
@@ -73,7 +74,6 @@ const AMBITI_CONFIG = [
   { value: 'personale' as Ambito, label: 'Uso personale', emoji: '🏠' },
 ]
 
-// Calcola gli step interni per un ambito
 function getStepsForAmbito(a: AmbitoData): string[] {
   if (a.ambito === 'lavoro') {
     const key = `${a.professione}_${a.utilizzo}`
@@ -94,8 +94,6 @@ export default function OnboardingForm() {
   const [error, setError] = useState('')
   const [dragIndex, setDragIndex] = useState<number | null>(null)
 
-  // Step globale
-  // 'nome' | 'ambiti' | { ambitoIndex, stepIndex } | 'note'
   type GlobalStep =
     | { phase: 'nome' }
     | { phase: 'ambiti' }
@@ -122,22 +120,22 @@ export default function OnboardingForm() {
     })
   }
 
-  // Aggiorna fonti quando cambia professione/utilizzo/specializzazione
+  // Aggiorna fonti quando cambiano le specializzazioni selezionate
   useEffect(() => {
     if (globalStep.phase !== 'ambito') return
     const { ambitoIndex } = globalStep
     const ad = ambitiData[ambitoIndex]
     if (!ad || ad.ambito !== 'lavoro') return
-    if (ad.professione && ad.utilizzo) {
-      const fonti = getFontiDefault(ad.professione, ad.utilizzo, ad.specializzazione)
+    if (ad.professione && ad.utilizzo && ad.specializzazioni.length > 0) {
+      const fonti = getFontiMultiple(ad.professione, ad.utilizzo, ad.specializzazioni)
       if (fonti.length > 0) {
         updateAmbitoData(ambitoIndex, 'fonti', fonti)
       }
     }
   }, [
-    globalStep.phase === 'ambito' ? ambitiData[(globalStep as { phase: 'ambito'; ambitoIndex: number; stepIndex: number }).ambitoIndex]?.professione : null,
-    globalStep.phase === 'ambito' ? ambitiData[(globalStep as { phase: 'ambito'; ambitoIndex: number; stepIndex: number }).ambitoIndex]?.utilizzo : null,
-    globalStep.phase === 'ambito' ? ambitiData[(globalStep as { phase: 'ambito'; ambitoIndex: number; stepIndex: number }).ambitoIndex]?.specializzazione : null,
+    globalStep.phase === 'ambito'
+      ? JSON.stringify(ambitiData[(globalStep as { phase: 'ambito'; ambitoIndex: number; stepIndex: number }).ambitoIndex]?.specializzazioni)
+      : null,
   ])
 
   function startAmbitiFlow() {
@@ -151,7 +149,6 @@ export default function OnboardingForm() {
     const { ambitoIndex, stepIndex } = globalStep
     const ad = ambitiData[ambitoIndex]
     const steps = getStepsForAmbito(ad)
-
     if (stepIndex < steps.length - 1) {
       setGlobalStep({ phase: 'ambito', ambitoIndex, stepIndex: stepIndex + 1 })
     } else if (ambitoIndex < ambitiData.length - 1) {
@@ -184,15 +181,13 @@ export default function OnboardingForm() {
     }
   }
 
-  // Calcola progresso totale
   function calcProgress() {
-    let total = 2 // nome + ambiti
+    let total = 2
     ambitiSelezionati.forEach((a, i) => {
       const ad = ambitiData[i] || defaultAmbitoData(a)
       total += getStepsForAmbito(ad).length
     })
-    total += 1 // note
-
+    total += 1
     let current = 0
     if (globalStep.phase === 'nome') current = 1
     else if (globalStep.phase === 'ambiti') current = 2
@@ -205,11 +200,9 @@ export default function OnboardingForm() {
     } else {
       current = total
     }
-
     return { current, total }
   }
 
-  // Drag & drop fonti
   function onDragStart(index: number) { setDragIndex(index) }
   function onDragOver(e: React.DragEvent, index: number, ambitoIndex: number) {
     e.preventDefault()
@@ -238,10 +231,8 @@ export default function OnboardingForm() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ nome, ambitiData, note_libere: noteLibere }),
       })
-
       if (!res.ok) throw new Error(`Errore API: ${res.status}`)
       const json = await res.json()
-
       if (!json.system_prompt) throw new Error('System prompt vuoto')
 
       const supabase = createClient()
@@ -249,7 +240,6 @@ export default function OnboardingForm() {
       const user = authData?.user
       if (!user) throw new Error('Utente non autenticato')
 
-      // Salva config principale
       const { error: upsertError } = await supabase
         .from('user_configs')
         .upsert({
@@ -261,7 +251,6 @@ export default function OnboardingForm() {
 
       if (upsertError) throw new Error(`Errore salvataggio: ${upsertError.message}`)
 
-      // Salva dati per ambito
       for (let i = 0; i < ambitiData.length; i++) {
         const ad = ambitiData[i]
         await supabase
@@ -285,9 +274,7 @@ export default function OnboardingForm() {
 
   const { current, total } = calcProgress()
 
-  // Render step corrente
   function renderStep() {
-    // NOME
     if (globalStep.phase === 'nome') {
       return (
         <div>
@@ -306,7 +293,6 @@ export default function OnboardingForm() {
       )
     }
 
-    // AMBITI
     if (globalStep.phase === 'ambiti') {
       return (
         <div>
@@ -325,7 +311,7 @@ export default function OnboardingForm() {
               >
                 <span className="text-xl">{a.emoji}</span>
                 <span className="flex-1 text-left">{a.label}</span>
-                {ambitiSelezionati.includes(a.value) && <span className="text-sm">✓</span>}
+                {ambitiSelezionati.includes(a.value) && <span>✓</span>}
               </button>
             ))}
           </div>
@@ -333,12 +319,11 @@ export default function OnboardingForm() {
       )
     }
 
-    // NOTE FINALI
     if (globalStep.phase === 'note') {
       return (
         <div>
           <h2 className="text-xl font-semibold text-gray-900 mb-1">Qualcosa che devo sapere?</h2>
-          <p className="text-gray-500 text-sm mb-6">Informazioni aggiuntive per il tuo assistente (opzionale)</p>
+          <p className="text-gray-500 text-sm mb-6">Informazioni aggiuntive (opzionale)</p>
           <textarea
             value={noteLibere}
             onChange={e => setNoteLibere(e.target.value)}
@@ -350,22 +335,20 @@ export default function OnboardingForm() {
       )
     }
 
-    // STEP AMBITO
     if (globalStep.phase === 'ambito') {
       const { ambitoIndex, stepIndex } = globalStep
       const ad = ambitiData[ambitoIndex]
       if (!ad) return null
       const steps = getStepsForAmbito(ad)
       const currentStepName = steps[stepIndex]
-      const ambitoLabel = AMBITI_CONFIG.find(a => a.value === ad.ambito)?.label || ad.ambito
 
       return (
         <div>
           <div className="inline-flex items-center gap-1.5 bg-gray-100 rounded-full px-3 py-1 mb-4">
-            <span className="text-xs text-gray-500">
-              {AMBITI_CONFIG.find(a => a.value === ad.ambito)?.emoji}
+            <span className="text-xs">{AMBITI_CONFIG.find(a => a.value === ad.ambito)?.emoji}</span>
+            <span className="text-xs font-medium text-gray-600">
+              {AMBITI_CONFIG.find(a => a.value === ad.ambito)?.label}
             </span>
-            <span className="text-xs font-medium text-gray-600">{ambitoLabel}</span>
           </div>
 
           {/* PROFESSIONE */}
@@ -380,7 +363,8 @@ export default function OnboardingForm() {
                     onClick={() => {
                       updateAmbitoData(ambitoIndex, 'professione', p.value)
                       updateAmbitoData(ambitoIndex, 'utilizzo', '')
-                      updateAmbitoData(ambitoIndex, 'specializzazione', '')
+                      updateAmbitoData(ambitoIndex, 'specializzazioni', [])
+                      updateAmbitoData(ambitoIndex, 'specializzazione_custom', '')
                       nextStep()
                     }}
                     className={`flex flex-col items-center gap-2 px-4 py-4 rounded-xl border text-sm font-medium transition-all ${
@@ -408,7 +392,7 @@ export default function OnboardingForm() {
                     key={u.value}
                     onClick={() => {
                       updateAmbitoData(ambitoIndex, 'utilizzo', u.value)
-                      updateAmbitoData(ambitoIndex, 'specializzazione', '')
+                      updateAmbitoData(ambitoIndex, 'specializzazioni', [])
                       nextStep()
                     }}
                     className={`w-full px-4 py-3.5 rounded-xl border text-sm font-medium text-left transition-all ${
@@ -424,26 +408,46 @@ export default function OnboardingForm() {
             </>
           )}
 
-          {/* SPECIALIZZAZIONE */}
+          {/* SPECIALIZZAZIONE — multipla + campo libero */}
           {currentStepName === 'specializzazione' && (
             <>
               <h2 className="text-xl font-semibold text-gray-900 mb-1">Specializzazione</h2>
-              <p className="text-gray-500 text-sm mb-6">Seleziona l&apos;area specifica</p>
-              <div className="space-y-3">
+              <p className="text-gray-500 text-sm mb-4">Puoi selezionarne più di una</p>
+              <div className="space-y-2 mb-4 max-h-72 overflow-y-auto pr-1">
                 {SPECIALIZZAZIONI[`${ad.professione}_${ad.utilizzo}`]?.map(s => (
                   <button
                     key={s.value}
-                    onClick={() => { updateAmbitoData(ambitoIndex, 'specializzazione', s.value); nextStep() }}
-                    className={`w-full px-4 py-3.5 rounded-xl border text-sm font-medium text-left transition-all ${
-                      ad.specializzazione === s.value
+                    onClick={() => {
+                      const current = ad.specializzazioni || []
+                      const next = current.includes(s.value)
+                        ? current.filter(x => x !== s.value)
+                        : [...current, s.value]
+                      updateAmbitoData(ambitoIndex, 'specializzazioni', next)
+                    }}
+                    className={`w-full px-4 py-3 rounded-xl border text-sm font-medium text-left flex items-center justify-between transition-all ${
+                      (ad.specializzazioni || []).includes(s.value)
                         ? 'border-gray-900 bg-gray-900 text-white'
                         : 'border-gray-200 hover:border-gray-400 text-gray-700'
                     }`}
                   >
-                    {s.label}
+                    <span>{s.label}</span>
+                    {(ad.specializzazioni || []).includes(s.value) && <span>✓</span>}
                   </button>
                 ))}
               </div>
+              <input
+                type="text"
+                value={ad.specializzazione_custom || ''}
+                onChange={e => updateAmbitoData(ambitoIndex, 'specializzazione_custom', e.target.value)}
+                placeholder="Altra specializzazione (es. Diritto canonico)..."
+                className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900"
+              />
+              {(ad.specializzazioni.length > 0 || ad.specializzazione_custom.trim()) && (
+                <p className="text-xs text-gray-400 mt-2">
+                  {ad.specializzazioni.length} selezionate
+                  {ad.specializzazione_custom.trim() && ' + campo libero'}
+                </p>
+              )}
             </>
           )}
 
@@ -452,11 +456,11 @@ export default function OnboardingForm() {
             <>
               <h2 className="text-xl font-semibold text-gray-900 mb-1">Gerarchia delle fonti</h2>
               <p className="text-gray-500 text-sm mb-2">Trascina per riordinare. La fonte in cima ha la massima priorità.</p>
-              <p className="text-xs text-gray-400 mb-5">Puoi escludere le fonti che non vuoi usare</p>
+              <p className="text-xs text-gray-400 mb-4">Puoi escludere le fonti che non vuoi usare</p>
               {ad.fonti.length === 0 ? (
-                <p className="text-gray-400 text-sm italic">Nessuna fonte predefinita trovata.</p>
+                <p className="text-gray-400 text-sm italic">Nessuna fonte predefinita trovata per le specializzazioni selezionate.</p>
               ) : (
-                <div className="space-y-2">
+                <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
                   {ad.fonti.map((fonte, index) => (
                     <div
                       key={fonte.id}
@@ -479,8 +483,8 @@ export default function OnboardingForm() {
                         onClick={() => toggleEscludi(ambitoIndex, fonte.id)}
                         className={`text-xs px-2.5 py-1 rounded-lg transition-colors ${
                           ad.fonti_escluse.includes(fonte.id)
-                            ? 'bg-red-100 text-red-600 hover:bg-red-200'
-                            : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                            ? 'bg-red-100 text-red-600'
+                            : 'bg-gray-100 text-gray-500'
                         }`}
                       >
                         {ad.fonti_escluse.includes(fonte.id) ? 'Ripristina' : 'Escludi'}
@@ -506,7 +510,7 @@ export default function OnboardingForm() {
                 ].map(c => (
                   <button
                     key={c.value}
-                    onClick={() => { updateAmbitoData(ambitoIndex, 'citazione', c.value); nextStep() }}
+                    onClick={() => { updateAmbitoData(ambitoIndex, 'citazione', c.value as 'sempre' | 'essenziale' | 'mai'); nextStep() }}
                     className={`w-full px-4 py-3.5 rounded-xl border text-left transition-all ${
                       ad.citazione === c.value
                         ? 'border-gray-900 bg-gray-900 text-white'
@@ -534,7 +538,7 @@ export default function OnboardingForm() {
                 ].map(c => (
                   <button
                     key={c.value}
-                    onClick={() => updateAmbitoData(ambitoIndex, 'conflitto_fonti', c.value)}
+                    onClick={() => updateAmbitoData(ambitoIndex, 'conflitto_fonti', c.value as 'gerarchia' | 'entrambe' | 'chiedi')}
                     className={`w-full px-4 py-3.5 rounded-xl border text-left transition-all ${
                       ad.conflitto_fonti === c.value
                         ? 'border-gray-900 bg-gray-900 text-white'
@@ -551,7 +555,7 @@ export default function OnboardingForm() {
                 {TONI.map(t => (
                   <button
                     key={t.value}
-                    onClick={() => updateAmbitoData(ambitoIndex, 'tono', t.value)}
+                    onClick={() => updateAmbitoData(ambitoIndex, 'tono', t.value as 'formale' | 'diretto' | 'colloquiale')}
                     className={`w-full px-4 py-3 rounded-xl border text-left transition-all ${
                       ad.tono === t.value
                         ? 'border-gray-900 bg-gray-900 text-white'
@@ -621,7 +625,7 @@ export default function OnboardingForm() {
                 {TONI.map(t => (
                   <button
                     key={t.value}
-                    onClick={() => { updateAmbitoData(ambitoIndex, 'tono', t.value); nextStep() }}
+                    onClick={() => { updateAmbitoData(ambitoIndex, 'tono', t.value as 'formale' | 'diretto' | 'colloquiale'); nextStep() }}
                     className={`w-full px-4 py-3.5 rounded-xl border text-left transition-all ${
                       ad.tono === t.value
                         ? 'border-gray-900 bg-gray-900 text-white'
@@ -640,7 +644,6 @@ export default function OnboardingForm() {
     }
   }
 
-  // Mostra bottone avanti?
   function showNext() {
     if (globalStep.phase === 'nome') return nome.trim().length > 0
     if (globalStep.phase === 'ambiti') return false
@@ -649,7 +652,7 @@ export default function OnboardingForm() {
       const { ambitoIndex, stepIndex } = globalStep
       const steps = getStepsForAmbito(ambitiData[ambitoIndex])
       const step = steps[stepIndex]
-      return ['fonti', 'conflitto_tono'].includes(step)
+      return ['fonti', 'conflitto_tono', 'specializzazione'].includes(step)
     }
     return false
   }
@@ -657,22 +660,16 @@ export default function OnboardingForm() {
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 w-full max-w-lg">
-
-        {/* Progress bar */}
         <div className="h-1.5 bg-gray-100 rounded-t-2xl overflow-hidden">
           <div
             className="h-full bg-gray-900 transition-all duration-500"
             style={{ width: `${(current / total) * 100}%` }}
           />
         </div>
-
         <div className="p-8">
           <p className="text-xs text-gray-400 mb-6">Step {current} di {total}</p>
-
           {renderStep()}
-
           {error && <p className="mt-4 text-red-500 text-sm">{error}</p>}
-
           <div className="flex gap-3 mt-8">
             {globalStep.phase !== 'nome' && (
               <button
@@ -682,8 +679,6 @@ export default function OnboardingForm() {
                 ← Indietro
               </button>
             )}
-
-            {/* Avanti per nome */}
             {globalStep.phase === 'nome' && nome.trim() && (
               <button
                 onClick={() => setGlobalStep({ phase: 'ambiti' })}
@@ -692,8 +687,6 @@ export default function OnboardingForm() {
                 Continua →
               </button>
             )}
-
-            {/* Avanti per selezione ambiti */}
             {globalStep.phase === 'ambiti' && ambitiSelezionati.length > 0 && (
               <button
                 onClick={startAmbitiFlow}
@@ -702,8 +695,6 @@ export default function OnboardingForm() {
                 Continua ({ambitiSelezionati.length} {ambitiSelezionati.length === 1 ? 'ambito' : 'ambiti'}) →
               </button>
             )}
-
-            {/* Avanti per step con conferma manuale */}
             {showNext() && (
               <button
                 onClick={nextStep}
@@ -712,8 +703,6 @@ export default function OnboardingForm() {
                 Continua →
               </button>
             )}
-
-            {/* Bottone finale */}
             {globalStep.phase === 'note' && (
               <button
                 onClick={generateAndSave}
