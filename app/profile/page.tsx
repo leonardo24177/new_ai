@@ -11,6 +11,7 @@ import {
   type Fonte,
 } from '@/lib/onboarding/config'
 import AddLinkForm from './AddLinkForm'
+import { toast } from 'sonner'
 
 type Ambito = 'lavoro' | 'studio' | 'personale'
 
@@ -105,7 +106,6 @@ export default function ProfilePage() {
   const [profileFiles, setProfileFiles] = useState<UserFile[]>([])
   const [systemPrompt, setSystemPrompt] = useState('')
   const [dragIndex, setDragIndex] = useState<number | null>(null)
-  const [successMsg, setSuccessMsg] = useState('')
   const [showAddLink, setShowAddLink] = useState(false)
   const [ambitiDisponibili, setAmbitiDisponibili] = useState<string[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -193,8 +193,7 @@ export default function ProfilePage() {
         { user_id: user.id, ambito, onboarding_data: ad },
         { onConflict: 'user_id,ambito' }
       )
-      setSuccessMsg('Salvato!')
-      setTimeout(() => setSuccessMsg(''), 2000)
+      toast.success('Salvato!')
     } finally {
       setSaving(false)
     }
@@ -226,8 +225,7 @@ export default function ProfilePage() {
         }, { onConflict: 'user_id,ambito' })
       }
       setSystemPrompt(json.system_prompt)
-      setSuccessMsg('System prompt rigenerato!')
-      setTimeout(() => setSuccessMsg(''), 3000)
+      toast.success('System prompt rigenerato!')
     } catch (e) {
       console.error(e)
     } finally {
@@ -247,15 +245,14 @@ export default function ProfilePage() {
       if (ambitoUpload) formData.append('ambito', ambitoUpload)
       const res = await fetch('/api/upload', { method: 'POST', body: formData })
       const data = await res.json()
-      if (data.error) { alert(data.error); return }
+      if (data.error) { toast.error(data.error); return }
       setProfileFiles(prev => [{
         id: data.id, nome: data.nome, mime_type: data.mime_type,
         dimensione: data.dimensione, created_at: new Date().toISOString(),
         storage_path: data.storage_path, tipo: 'file',
         ambito: ambitoUpload,
       }, ...prev])
-      setSuccessMsg('File caricato!')
-      setTimeout(() => setSuccessMsg(''), 2000)
+      toast.success('File caricato!')
     } finally {
       setUploading(false)
       if (fileInputRef.current) fileInputRef.current.value = ''
@@ -298,7 +295,6 @@ export default function ProfilePage() {
             <p className="text-xs text-gray-400">{nomeUtente}</p>
           </div>
         </div>
-        {successMsg && <span className="text-sm text-green-600 font-medium">{successMsg}</span>}
       </div>
 
       <div className="max-w-2xl mx-auto px-4 py-6">
@@ -674,8 +670,7 @@ export default function ProfilePage() {
                     ambito: ambitoLink,
                   }, ...prev])
                   setShowAddLink(false)
-                  setSuccessMsg('Link aggiunto!')
-                  setTimeout(() => setSuccessMsg(''), 2000)
+                  toast.success('Link aggiunto!')
                 }}
               />
             )}
@@ -771,8 +766,7 @@ export default function ProfilePage() {
                     { user_id: user.id, system_prompt_base: systemPrompt },
                     { onConflict: 'user_id' }
                   )
-                  setSuccessMsg('Salvato!')
-                  setTimeout(() => setSuccessMsg(''), 2000)
+                  toast.success('Salvato!')
                 }
                 setSaving(false)
               }}

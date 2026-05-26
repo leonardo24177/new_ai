@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { toast } from 'sonner'
 
 interface AddLinkProps {
   ambito: string | null
@@ -18,14 +19,12 @@ export default function AddLinkForm({ ambito, onAdded }: AddLinkProps) {
   const [titolo, setTitolo] = useState('')
   const [scaricaContenuto, setScaricaContenuto] = useState(true)
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!url.trim()) return
 
     setLoading(true)
-    setError('')
 
     try {
       const res = await fetch('/api/links', {
@@ -43,15 +42,20 @@ export default function AddLinkForm({ ambito, onAdded }: AddLinkProps) {
       const data = await res.json()
 
       if (data.error) {
-        setError(data.error)
+        toast.error(data.error)
         return
       }
 
+      toast.success(
+        scaricaContenuto && data.scaricato
+          ? `Link aggiunto con contenuto scaricato`
+          : `Link aggiunto come riferimento`
+      )
       onAdded(data)
       setUrl('')
       setTitolo('')
     } catch {
-      setError('Errore durante il salvataggio')
+      toast.error('Errore durante il salvataggio')
     } finally {
       setLoading(false)
     }
@@ -85,7 +89,7 @@ export default function AddLinkForm({ ambito, onAdded }: AddLinkProps) {
           />
         </div>
 
-        <label className="flex items-start gap-3 cursor-pointer group">
+        <label className="flex items-start gap-3 cursor-pointer">
           <input
             type="checkbox"
             checked={scaricaContenuto}
@@ -100,8 +104,6 @@ export default function AddLinkForm({ ambito, onAdded }: AddLinkProps) {
             </p>
           </div>
         </label>
-
-        {error && <p className="text-xs text-red-500">{error}</p>}
 
         <button
           type="submit"
