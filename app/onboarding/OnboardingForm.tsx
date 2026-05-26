@@ -216,7 +216,6 @@ export default function OnboardingForm() {
   }
 
   function showNext() {
-    if (globalStep.phase === 'nome') return nome.trim().length > 0
     if (globalStep.phase !== 'ambito') return false
     const step = getStepsForAmbito(ambitiData[globalStep.ambitoIndex])[globalStep.stepIndex]
     return ['fonti', 'conflitto_tono', 'specializzazione'].includes(step)
