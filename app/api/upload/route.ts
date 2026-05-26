@@ -62,7 +62,8 @@ export async function POST(req: NextRequest) {
 
     try {
       if (file.type === 'application/pdf') {
-        const pdfParse = (await import('pdf-parse')).default
+        const pdfParseModule = await import('pdf-parse')
+        const pdfParse = pdfParseModule.default || pdfParseModule
         const parsed = await pdfParse(buffer)
         testo_estratto = parsed.text?.slice(0, 50000) || ''
       }
