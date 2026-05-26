@@ -110,8 +110,8 @@ export async function POST(req: NextRequest) {
       max_tokens: 2048,
       system: systemPrompt,
       messages: messagesWithContext.map((m: { role: string; content: string }) => ({
-        role: m.role,
-        content: m.content,
+      role: m.role as 'user' | 'assistant',
+      content: m.content,
       })),
     })
 
