@@ -25,6 +25,14 @@ interface Conversation {
   skill_slug: string | null
 }
 
+type Ambito = 'lavoro' | 'studio' | 'personale' | null
+
+const AMBITI_CONFIG = [
+  { value: 'lavoro' as Ambito, label: 'Lavoro', emoji: '💼' },
+  { value: 'studio' as Ambito, label: 'Studio', emoji: '📖' },
+  { value: 'personale' as Ambito, label: 'Personale', emoji: '🏠' },
+]
+
 function MessageBubble({ message }: { message: Message }) {
   const isUser = message.role === 'user'
   const hasWarning = !isUser && message.content.startsWith('⚠️ FONTE NON VERIFICATA')
@@ -37,7 +45,7 @@ function MessageBubble({ message }: { message: Message }) {
   }
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-4`}>
-      <div className={`max-w-[80%]`}>
+      <div className="max-w-[80%]">
         {hasWarning && (
           <div className="mb-2 px-4 py-3 rounded-xl bg-amber-50 border border-amber-200">
             <p className="text-sm text-amber-800 font-medium">{warningText}</p>
@@ -122,6 +130,11 @@ export default function ChatPage() {
   const [showSkills, setShowSkills] = useState(false)
   const [loadingHistory, setLoadingHistory] = useState(false)
   const [isAdmin, setIsAdmin] = useState(false)
+  const [ambitoAttivo, setAmbitoAttivo] = useState<Ambito>(null)
+  const [ambitiDisponibili, setAmbitiDisponibili] = useState<string[]>([])
+  const [showAmbitoMenu, setShowAmbitoMenu] = useState(false)
+  const [pendingFile, setPendingFile] = useState<File | null>(null)
+  const [showFileDialog, setShowFileDialog] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -146,6 +159,18 @@ export default function ChatPage() {
     setNomeAssistente(config.nome_assistente || 'Assistente')
     setNomeUtente(user.user_metadata?.nome || user.email?.split('@')[0] || '')
 
+    const { data: ambiti } = await supabase
+      .from('user_ambiti')
+      .select('ambito')
+      .eq('user_id', user.id)
+      .eq('attivo', true)
+
+    if (ambiti && ambiti.length > 0) {
+      const ambitiList = ambiti.map(a => a.ambito)
+      setAmbitiDisponibili(ambitiList)
+      setAmbitoAttivo(ambitiList[0] as Ambito)
+    }
+
     const { data: conv } = await supabase
       .from('conversations')
       .insert({ user_id: user.id })
@@ -154,14 +179,12 @@ export default function ChatPage() {
 
     if (conv) setConversationId(conv.id)
 
-    // Carica skill disponibili
     const { data: publicSkills } = await supabase
       .from('skills')
       .select('id, slug, label, extra_sys')
       .eq('pubblica', true)
     if (publicSkills) setSkills(publicSkills)
 
-    // Verifica se admin
     const { data: admin } = await supabase
       .from('admins')
       .select('user_id')
@@ -231,26 +254,44 @@ export default function ChatPage() {
     if (convId === conversationId) newConversation()
   }
 
+  // Mostra dialog invece di caricare subito
   async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
+    setPendingFile(file)
+    setShowFileDialog(true)
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  // Carica il file con il tipo contesto scelto
+  async function uploadFile(tipo_contesto: 'chat' | 'profile') {
+    if (!pendingFile) return
+    setShowFileDialog(false)
     setUploading(true)
     try {
       const formData = new FormData()
-      formData.append('file', file)
-      formData.append('tipo_contesto', 'chat')
+      formData.append('file', pendingFile)
+      formData.append('tipo_contesto', tipo_contesto)
+      if (ambitoAttivo) formData.append('ambito', ambitoAttivo)
+
       const res = await fetch('/api/upload', { method: 'POST', body: formData })
       const data = await res.json()
       if (data.error) { alert(`Errore: ${data.error}`); return }
-      setFileContexts(prev => [...prev, {
-        id: data.id, nome: data.nome, testo: data.testo_estratto,
-        mime_type: data.mime_type, dimensione: data.dimensione,
-      }])
+
+      if (tipo_contesto === 'chat') {
+        setFileContexts(prev => [...prev, {
+          id: data.id, nome: data.nome, testo: data.testo_estratto,
+          mime_type: data.mime_type, dimensione: data.dimensione,
+        }])
+      } else {
+        // Feedback visivo per file permanente
+        alert(`✓ "${data.nome}" aggiunto alle fonti${ambitoAttivo ? ` [${ambitoAttivo}]` : ' permanenti'}`)
+      }
     } catch (e) {
       console.error(e)
     } finally {
       setUploading(false)
-      if (fileInputRef.current) fileInputRef.current.value = ''
+      setPendingFile(null)
     }
   }
 
@@ -284,6 +325,7 @@ export default function ChatPage() {
           conversation_id: conversationId,
           file_contexts: sentFiles,
           active_skill_slugs: activeSkills,
+          ambito_attivo: ambitoAttivo,
         }),
       })
       const data = await res.json()
@@ -314,8 +356,48 @@ export default function ChatPage() {
     e.target.style.height = `${Math.min(e.target.scrollHeight, 160)}px`
   }
 
+  const ambitoConfig = AMBITI_CONFIG.find(a => a.value === ambitoAttivo)
+
   return (
     <div className="flex h-screen bg-white overflow-hidden">
+
+      {/* Dialog scelta file */}
+      {showFileDialog && pendingFile && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/20 pb-4 px-4">
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-xl p-5 w-full max-w-sm">
+            <p className="text-sm font-semibold text-gray-900 mb-1 truncate">
+              📎 {pendingFile.name}
+            </p>
+            <p className="text-xs text-gray-400 mb-4">Come vuoi usare questo file?</p>
+            <div className="space-y-2">
+              <button
+                onClick={() => uploadFile('chat')}
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 text-left hover:border-gray-400 transition-colors"
+              >
+                <p className="text-sm font-medium text-gray-900">Solo questa chat</p>
+                <p className="text-xs text-gray-400 mt-0.5">Temporaneo, usato solo in questa conversazione</p>
+              </button>
+              <button
+                onClick={() => uploadFile('profile')}
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 text-left hover:border-gray-400 transition-colors"
+              >
+                <p className="text-sm font-medium text-gray-900">
+                  Aggiungi alle fonti {ambitoAttivo ? `[${ambitoAttivo}]` : 'permanenti'}
+                </p>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  Disponibile in tutte le chat{ambitoAttivo ? ` di ${ambitoAttivo}` : ''}
+                </p>
+              </button>
+            </div>
+            <button
+              onClick={() => { setShowFileDialog(false); setPendingFile(null) }}
+              className="w-full mt-3 text-xs text-gray-400 hover:text-gray-600 py-1"
+            >
+              Annulla
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Sidebar */}
       <div className={`fixed inset-y-0 left-0 z-30 w-72 bg-gray-50 border-r border-gray-200 flex flex-col transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
@@ -358,17 +440,31 @@ export default function ChatPage() {
             ))
           )}
         </div>
-        <div className="p-4 border-t border-gray-200">
+        {/* Footer sidebar con navigazione */}
+        <div className="p-4 border-t border-gray-200 space-y-1">
+          <button
+            onClick={() => router.push('/profile')}
+            className="w-full text-sm text-gray-600 hover:text-gray-900 transition-colors text-left py-1 flex items-center gap-2"
+          >
+            <span>👤</span> Profilo
+          </button>
+          {isAdmin && (
+            <button
+              onClick={() => router.push('/admin')}
+              className="w-full text-sm text-gray-600 hover:text-gray-900 transition-colors text-left py-1 flex items-center gap-2"
+            >
+              <span>⚙️</span> Admin
+            </button>
+          )}
           <button
             onClick={handleLogout}
-            className="w-full text-sm text-gray-500 hover:text-gray-700 transition-colors text-left"
+            className="w-full text-sm text-red-500 hover:text-red-700 transition-colors text-left py-1 flex items-center gap-2"
           >
-            Esci
+            <span>→</span> Esci
           </button>
         </div>
       </div>
 
-      {/* Overlay sidebar */}
       {sidebarOpen && (
         <div className="fixed inset-0 z-20 bg-black/20" onClick={() => setSidebarOpen(false)} />
       )}
@@ -398,24 +494,21 @@ export default function ChatPage() {
           <div className="flex items-center gap-3">
             <button
               onClick={newConversation}
-              className="text-xs text-gray-400 hover:text-gray-600 transition-colors flex items-center gap-1"
-            >
-              <span>+</span> Nuova
-            </button>
-            <button
-              onClick={() => router.push('/profile')}
               className="text-xs text-gray-400 hover:text-gray-600 transition-colors"
             >
+              + Nuova
+            </button>
+            <button onClick={() => router.push('/profile')} className="text-xs text-gray-400 hover:text-gray-600 transition-colors">
               Profilo
             </button>
             {isAdmin && (
-              <button
-                onClick={() => router.push('/admin')}
-                className="text-xs text-gray-400 hover:text-gray-600 transition-colors"
-              >
+              <button onClick={() => router.push('/admin')} className="text-xs text-gray-400 hover:text-gray-600 transition-colors">
                 Admin
               </button>
             )}
+            <button onClick={handleLogout} className="text-xs text-red-400 hover:text-red-600 transition-colors">
+              Esci
+            </button>
           </div>
         </div>
 
@@ -427,7 +520,12 @@ export default function ChatPage() {
                 <span className="text-2xl">✨</span>
               </div>
               <p className="text-gray-900 font-medium mb-1">Come posso aiutarti?</p>
-              <p className="text-gray-400 text-sm">Scrivi un messaggio o allega un file per iniziare</p>
+              {ambitoAttivo && (
+                <p className="text-xs text-gray-400 mt-1">
+                  Contesto: {ambitoConfig?.emoji} {ambitoConfig?.label}
+                </p>
+              )}
+              <p className="text-gray-400 text-sm mt-1">Scrivi un messaggio o allega un file per iniziare</p>
             </div>
           )}
           {messages.map((msg, i) => <MessageBubble key={i} message={msg} />)}
@@ -487,12 +585,51 @@ export default function ChatPage() {
 
         {/* Input */}
         <div className="border-t border-gray-100 px-4 py-3">
+
+          {/* Selector ambito */}
+          {ambitiDisponibili.length > 1 && (
+            <div className="flex items-center gap-2 mb-2 relative">
+              <button
+                onClick={() => setShowAmbitoMenu(!showAmbitoMenu)}
+                className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border transition-all ${
+                  ambitoAttivo
+                    ? 'border-gray-900 bg-gray-900 text-white'
+                    : 'border-gray-200 text-gray-500'
+                }`}
+              >
+                <span>{ambitoConfig?.emoji}</span>
+                <span>{ambitoConfig?.label || 'Contesto'}</span>
+                <span className="opacity-60">▾</span>
+              </button>
+
+              {showAmbitoMenu && (
+                <div className="absolute bottom-8 left-0 bg-white border border-gray-200 rounded-xl shadow-lg p-1 z-10 min-w-[140px]">
+                  {ambitiDisponibili.map(a => {
+                    const cfg = AMBITI_CONFIG.find(ac => ac.value === a)
+                    return (
+                      <button
+                        key={a}
+                        onClick={() => { setAmbitoAttivo(a as Ambito); setShowAmbitoMenu(false) }}
+                        className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
+                          ambitoAttivo === a ? 'bg-gray-900 text-white' : 'text-gray-700 hover:bg-gray-50'
+                        }`}
+                      >
+                        <span>{cfg?.emoji}</span>
+                        <span>{cfg?.label}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="flex items-end gap-2 bg-gray-50 rounded-2xl px-3 py-2">
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={uploading}
               className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-600 disabled:opacity-40 transition-colors flex-shrink-0"
-              title="Allega file"
+              title={`Allega file${ambitoAttivo ? ` (${ambitoAttivo})` : ''}`}
             >
               {uploading ? (
                 <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
@@ -511,7 +648,7 @@ export default function ChatPage() {
               value={input}
               onChange={handleTextareaChange}
               onKeyDown={handleKeyDown}
-              placeholder="Scrivi un messaggio... (Invio per inviare)"
+              placeholder={`Scrivi un messaggio${ambitoAttivo ? ` [${ambitoAttivo}]` : ''}... (Invio per inviare)`}
               rows={1}
               className="flex-1 bg-transparent text-sm text-gray-900 placeholder-gray-400 resize-none focus:outline-none py-1"
               style={{ maxHeight: '160px' }}

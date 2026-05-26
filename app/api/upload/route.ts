@@ -5,7 +5,6 @@ export async function POST(req: NextRequest) {
   try {
     const supabase = await createClient()
 
-    // 1. Verifica autenticazione
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) {
       return NextResponse.json({ error: 'Non autenticato' }, { status: 401 })
@@ -14,12 +13,12 @@ export async function POST(req: NextRequest) {
     const formData = await req.formData()
     const file = formData.get('file') as File
     const tipo_contesto = formData.get('tipo_contesto') as string || 'profile'
+    const ambito = formData.get('ambito') as string | null || null
 
     if (!file) {
       return NextResponse.json({ error: 'Nessun file' }, { status: 400 })
     }
 
-    // 2. Validazione tipo file
     const MIME_CONSENTITI = [
       'application/pdf',
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -36,13 +35,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Tipo file non supportato' }, { status: 400 })
     }
 
-    // 3. Limite dimensione (20MB)
     const MAX_SIZE = 20 * 1024 * 1024
     if (file.size > MAX_SIZE) {
       return NextResponse.json({ error: 'File troppo grande (max 20MB)' }, { status: 400 })
     }
 
-    // 4. Upload su Supabase Storage
     const buffer = Buffer.from(await file.arrayBuffer())
     const storagePath = `${user.id}/${Date.now()}_${file.name}`
 
@@ -57,17 +54,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: `Errore upload: ${uploadError.message}` }, { status: 500 })
     }
 
-    // 5. Estrai testo dal file
     let testo_estratto = ''
 
     try {
       if (file.type === 'application/pdf') {
+        const pdfParseModule = await import('pdf-parse')
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const pdfParse = await import('pdf-parse').then((m: any) => m.default || m)
         const parsed = await pdfParse(buffer)
         testo_estratto = parsed.text?.slice(0, 50000) || ''
       }
-
       else if (
         file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
         file.type === 'application/msword'
@@ -76,7 +72,6 @@ export async function POST(req: NextRequest) {
         const result = await mammoth.extractRawText({ buffer })
         testo_estratto = result.value?.slice(0, 50000) || ''
       }
-
       else if (file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') {
         const XLSX = await import('xlsx')
         const workbook = XLSX.read(buffer, { type: 'buffer' })
@@ -86,16 +81,12 @@ export async function POST(req: NextRequest) {
         })
         testo_estratto = sheets.join('\n\n').slice(0, 50000)
       }
-
       else if (file.type === 'application/vnd.openxmlformats-officedocument.presentationml.presentation') {
-        // Per PPTX estraiamo il testo dai file XML interni
         testo_estratto = `[File PowerPoint: ${file.name}]`
       }
-
       else if (file.type.startsWith('image/')) {
         testo_estratto = `[Immagine: ${file.name}]`
       }
-
       else if (file.type === 'text/plain') {
         testo_estratto = buffer.toString('utf-8').slice(0, 50000)
       }
@@ -104,17 +95,23 @@ export async function POST(req: NextRequest) {
       testo_estratto = ''
     }
 
-    // 6. Salva metadati su DB
+    const insertData: Record<string, unknown> = {
+      user_id: user.id,
+      nome: file.name,
+      tipo_contesto,
+      storage_path: storagePath,
+      mime_type: file.type,
+      dimensione: file.size,
+    }
+
+    // Aggiungi ambito solo se presente
+    if (ambito && ['lavoro', 'studio', 'personale'].includes(ambito)) {
+      insertData.ambito = ambito
+    }
+
     const { data: fileRecord, error: dbError } = await supabase
       .from('user_files')
-      .insert({
-        user_id: user.id,
-        nome: file.name,
-        tipo_contesto,
-        storage_path: storagePath,
-        mime_type: file.type,
-        dimensione: file.size,
-      })
+      .insert(insertData)
       .select('id')
       .single()
 
@@ -129,6 +126,7 @@ export async function POST(req: NextRequest) {
       testo_estratto: testo_estratto.trim(),
       mime_type: file.type,
       dimensione: file.size,
+      ambito,
     })
 
   } catch (error) {
