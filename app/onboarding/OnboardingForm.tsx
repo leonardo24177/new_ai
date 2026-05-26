@@ -8,11 +8,11 @@ import {
   UTILIZZI,
   SPECIALIZZAZIONI,
   getFontiMultiple,
+  PROFESSIONI_LIST,
   type Professione,
   type Ambito,
 } from '@/lib/onboarding/config'
 
-// Dati per un singolo ambito
 interface AmbitoData {
   ambito: Ambito
   professione: string
@@ -45,15 +45,11 @@ function defaultAmbitoData(ambito: Ambito): AmbitoData {
   }
 }
 
-const PROFESSIONI = [
-  { value: 'avvocato', label: 'Avvocato', emoji: '⚖️' },
-  { value: 'commercialista', label: 'Commercialista', emoji: '📊' },
-  { value: 'medico', label: 'Medico', emoji: '🏥' },
-  { value: 'insegnante', label: 'Insegnante', emoji: '📚' },
-  { value: 'architetto', label: 'Architetto', emoji: '📐' },
-  { value: 'imprenditore', label: 'Imprenditore', emoji: '💼' },
-  { value: 'altro', label: 'Altro', emoji: '👤' },
-]
+const PROFESSIONI_PER_CATEGORIA = PROFESSIONI_LIST.reduce((acc, p) => {
+  if (!acc[p.categoria]) acc[p.categoria] = []
+  acc[p.categoria].push(p)
+  return acc
+}, {} as Record<string, typeof PROFESSIONI_LIST>)
 
 const STUDI = [
   { value: 'universita', label: 'Università' },
@@ -120,7 +116,6 @@ export default function OnboardingForm() {
     })
   }
 
-  // Aggiorna fonti quando cambiano le specializzazioni selezionate
   useEffect(() => {
     if (globalStep.phase !== 'ambito') return
     const { ambitoIndex } = globalStep
@@ -351,31 +346,38 @@ export default function OnboardingForm() {
             </span>
           </div>
 
-          {/* PROFESSIONE */}
+          {/* PROFESSIONE raggruppata per categoria */}
           {currentStepName === 'professione' && (
             <>
               <h2 className="text-xl font-semibold text-gray-900 mb-1">Che professione hai?</h2>
-              <p className="text-gray-500 text-sm mb-6">Personalizzeremo le fonti in base al tuo settore</p>
-              <div className="grid grid-cols-2 gap-3">
-                {PROFESSIONI.map(p => (
-                  <button
-                    key={p.value}
-                    onClick={() => {
-                      updateAmbitoData(ambitoIndex, 'professione', p.value)
-                      updateAmbitoData(ambitoIndex, 'utilizzo', '')
-                      updateAmbitoData(ambitoIndex, 'specializzazioni', [])
-                      updateAmbitoData(ambitoIndex, 'specializzazione_custom', '')
-                      nextStep()
-                    }}
-                    className={`flex flex-col items-center gap-2 px-4 py-4 rounded-xl border text-sm font-medium transition-all ${
-                      ad.professione === p.value
-                        ? 'border-gray-900 bg-gray-900 text-white'
-                        : 'border-gray-200 hover:border-gray-400 text-gray-700'
-                    }`}
-                  >
-                    <span className="text-2xl">{p.emoji}</span>
-                    {p.label}
-                  </button>
+              <p className="text-gray-500 text-sm mb-4">Personalizzeremo le fonti in base al tuo settore</p>
+              <div className="space-y-4 max-h-96 overflow-y-auto pr-1">
+                {Object.entries(PROFESSIONI_PER_CATEGORIA).map(([categoria, professioni]) => (
+                  <div key={categoria}>
+                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 px-1">{categoria}</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {professioni.map(p => (
+                        <button
+                          key={p.value}
+                          onClick={() => {
+                            updateAmbitoData(ambitoIndex, 'professione', p.value)
+                            updateAmbitoData(ambitoIndex, 'utilizzo', '')
+                            updateAmbitoData(ambitoIndex, 'specializzazioni', [])
+                            updateAmbitoData(ambitoIndex, 'specializzazione_custom', '')
+                            nextStep()
+                          }}
+                          className={`flex flex-col items-center gap-1.5 px-3 py-3 rounded-xl border text-xs font-medium transition-all ${
+                            ad.professione === p.value
+                              ? 'border-gray-900 bg-gray-900 text-white'
+                              : 'border-gray-200 hover:border-gray-400 text-gray-700'
+                          }`}
+                        >
+                          <span className="text-xl">{p.emoji}</span>
+                          <span className="text-center leading-tight">{p.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 ))}
               </div>
             </>
@@ -408,7 +410,7 @@ export default function OnboardingForm() {
             </>
           )}
 
-          {/* SPECIALIZZAZIONE — multipla + campo libero */}
+          {/* SPECIALIZZAZIONE */}
           {currentStepName === 'specializzazione' && (
             <>
               <h2 className="text-xl font-semibold text-gray-900 mb-1">Specializzazione</h2>
@@ -418,10 +420,10 @@ export default function OnboardingForm() {
                   <button
                     key={s.value}
                     onClick={() => {
-                      const current = ad.specializzazioni || []
-                      const next = current.includes(s.value)
-                        ? current.filter(x => x !== s.value)
-                        : [...current, s.value]
+                      const curr = ad.specializzazioni || []
+                      const next = curr.includes(s.value)
+                        ? curr.filter(x => x !== s.value)
+                        : [...curr, s.value]
                       updateAmbitoData(ambitoIndex, 'specializzazioni', next)
                     }}
                     className={`w-full px-4 py-3 rounded-xl border text-sm font-medium text-left flex items-center justify-between transition-all ${
