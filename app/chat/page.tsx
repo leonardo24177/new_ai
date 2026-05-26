@@ -523,20 +523,24 @@ export default function ChatPage() {
               </span>
             )}
             <button onClick={newConversation}
+              title="Nuova conversazione"
               className={`text-xs ${theme.headerText} opacity-70 active:opacity-100 flex items-center gap-1 px-2 py-1.5 rounded-full bg-white/10 active:bg-white/20`}>
               ✏️
             </button>
             <button onClick={() => router.push('/profile')}
+              title="Profilo"
               className={`text-xs ${theme.headerText} opacity-70 active:opacity-100 flex items-center gap-1 px-2 py-1.5 rounded-full bg-white/10 active:bg-white/20`}>
               👤
             </button>
             {isAdmin && (
               <button onClick={() => router.push('/admin')}
+                title="Admin"
                 className={`text-xs ${theme.headerText} opacity-70 active:opacity-100 flex items-center gap-1 px-2 py-1.5 rounded-full bg-white/10 active:bg-white/20`}>
                 ⚙️
               </button>
             )}
             <button onClick={handleLogout}
+              title="Esci"
               className="text-xs text-red-300 active:text-red-200 flex items-center gap-1 px-2 py-1.5 rounded-full bg-white/10 active:bg-red-500/20">
               →
             </button>
