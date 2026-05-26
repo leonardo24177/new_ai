@@ -225,7 +225,7 @@ export default function ChatPage() {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const isFirstMessage = useRef(true)
-  const recognitionRef = useRef<SpeechRecognition | null>(null)
+  const recognitionRef = useRef<InstanceType<typeof window.SpeechRecognition> | null>(null)
   const speechSynthRef = useRef<SpeechSynthesisUtterance | null>(null)
 
   const theme = AMBITI_THEME[ambitoAttivo || 'default'] || AMBITI_THEME.default
