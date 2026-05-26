@@ -328,9 +328,37 @@ export default function ChatPage() {
           ambito_attivo: ambitoAttivo,
         }),
       })
-      const data = await res.json()
-      if (data.message) {
-        setMessages(prev => [...prev, { role: 'assistant', content: data.message }])
+
+      if (!res.ok || !res.body) throw new Error('Errore risposta')
+
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let streamedText = ''
+
+      // Aggiungi messaggio vuoto che si riempie in streaming
+      setMessages(prev => [...prev, { role: 'assistant', content: '' }])
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        const chunk = decoder.decode(value, { stream: true })
+        const lines = chunk.split('\n')
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          try {
+            const data = JSON.parse(line.slice(6))
+            if (data.chunk) {
+              streamedText += data.chunk
+              setMessages(prev => {
+                const next = [...prev]
+                next[next.length - 1] = { role: 'assistant', content: streamedText }
+                return next
+              })
+            }
+          } catch {}
+        }
       }
     } catch (e) {
       console.error(e)

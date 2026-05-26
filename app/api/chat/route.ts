@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
 import { selectModel } from '@/lib/model-selector'
@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
 
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) {
-      return NextResponse.json({ error: 'Non autenticato' }, { status: 401 })
+      return new Response(JSON.stringify({ error: 'Non autenticato' }), { status: 401 })
     }
 
     const {
@@ -99,22 +99,19 @@ export async function POST(req: NextRequest) {
     const { data: profileFiles } = await profileFilesQuery
 
     // 7. Prepara messaggi con file context
-    let messagesWithContext = [...messages]
+    const messagesWithContext = [...messages]
     const fileTexts: string[] = []
 
     if (profileFiles && profileFiles.length > 0) {
       for (const f of profileFiles) {
         const ambitoTag = f.ambito ? ` [${f.ambito}]` : ''
         if (f.testo_contenuto && f.testo_contenuto.trim().length > 0) {
-          // Inietta il contenuto reale del file/link
           const tipoLabel = f.tipo === 'link' ? 'Link' : 'File'
           fileTexts.push(`[${tipoLabel} verificato${ambitoTag}: ${f.nome}]\n${f.testo_contenuto.slice(0, 30000)}`)
         } else if (f.tipo === 'link' && f.url) {
-          // Link senza contenuto scaricato — solo riferimento
           fileTexts.push(`[Link di riferimento${ambitoTag}: ${f.nome} — ${f.url}] (contenuto non scaricato)`)
         } else if (f.storage_path) {
-          // File caricato senza testo estratto
-          fileTexts.push(`[File di profilo${ambitoTag}: ${f.nome}] (contenuto non disponibile in questo contesto)`)
+          fileTexts.push(`[File di profilo${ambitoTag}: ${f.nome}] (contenuto non disponibile)`)
         }
       }
     }
@@ -164,48 +161,87 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 10. Chiama Claude
-    const response = await client.messages.create({
-      model,
-      max_tokens: model === 'claude-opus-4-5' ? 4096 : 2048,
-      system: systemPrompt,
-      messages: messagesWithContext.map((m: { role: string; content: string }) => ({
-        role: m.role as 'user' | 'assistant',
-        content: m.content,
-      })),
+    // 10. Streaming con SSE
+    const encoder = new TextEncoder()
+
+    const stream = new ReadableStream({
+      async start(controller) {
+        let fullText = ''
+        let inputTokens = 0
+        let outputTokens = 0
+
+        try {
+          const anthropicStream = await client.messages.stream({
+            model,
+            max_tokens: model === 'claude-opus-4-5' ? 4096 : 2048,
+            system: systemPrompt,
+            messages: messagesWithContext.map((m: { role: string; content: string }) => ({
+              role: m.role as 'user' | 'assistant',
+              content: m.content,
+            })),
+          })
+
+          for await (const event of anthropicStream) {
+            if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+              const chunk = event.delta.text
+              fullText += chunk
+              // Invia ogni chunk come SSE
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ chunk })}\n\n`))
+            }
+
+            if (event.type === 'message_delta' && event.usage) {
+              outputTokens = event.usage.output_tokens
+            }
+
+            if (event.type === 'message_start' && event.message.usage) {
+              inputTokens = event.message.usage.input_tokens
+            }
+          }
+
+          // Calcola e salva costo
+          const costoStimato = calcolaCosto(model, inputTokens, outputTokens)
+
+          if (conversation_id && fullText) {
+            await supabase.from('messages').insert({
+              conversation_id,
+              ruolo: 'assistant',
+              contenuto: fullText,
+              modello: model,
+              tokens_input: inputTokens,
+              tokens_output: outputTokens,
+              costo_stimato: costoStimato,
+            })
+          }
+
+          // Invia evento finale con metadati
+          controller.enqueue(encoder.encode(
+            `data: ${JSON.stringify({
+              done: true,
+              model_used: model,
+              tokens: { input: inputTokens, output: outputTokens },
+              costo: costoStimato,
+            })}\n\n`
+          ))
+
+        } catch (err) {
+          console.error('Errore streaming:', err)
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: 'Errore durante lo streaming' })}\n\n`))
+        } finally {
+          controller.close()
+        }
+      }
     })
 
-    const assistantMessage = response.content[0].type === 'text'
-      ? response.content[0].text
-      : ''
-
-    // 11. Calcola costo
-    const tokensInput = response.usage.input_tokens
-    const tokensOutput = response.usage.output_tokens
-    const costoStimato = calcolaCosto(model, tokensInput, tokensOutput)
-
-    // 12. Salva risposta con tracking
-    if (conversation_id) {
-      await supabase.from('messages').insert({
-        conversation_id,
-        ruolo: 'assistant',
-        contenuto: assistantMessage,
-        modello: model,
-        tokens_input: tokensInput,
-        tokens_output: tokensOutput,
-        costo_stimato: costoStimato,
-      })
-    }
-
-    return NextResponse.json({
-      message: assistantMessage,
-      model_used: model,
-      tokens: { input: tokensInput, output: tokensOutput },
-      costo: costoStimato,
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      },
     })
 
   } catch (error) {
     console.error('Errore chat:', error)
-    return NextResponse.json({ error: 'Errore interno' }, { status: 500 })
+    return new Response(JSON.stringify({ error: 'Errore interno' }), { status: 500 })
   }
 }
