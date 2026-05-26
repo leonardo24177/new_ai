@@ -36,6 +36,7 @@ interface UserFile {
   dimensione: number
   created_at: string
   storage_path: string
+  ambito: string | null
 }
 
 // Raggruppa professioni per categoria (stesso approccio dell'onboarding)
@@ -111,6 +112,7 @@ export default function ProfilePage() {
   const [systemPrompt, setSystemPrompt] = useState('')
   const [dragIndex, setDragIndex] = useState<number | null>(null)
   const [successMsg, setSuccessMsg] = useState('')
+  const [activeFileAmbito, setActiveFileAmbito] = useState<string>('tutti')
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => { loadProfile() }, [])
@@ -232,6 +234,10 @@ export default function ProfilePage() {
       const formData = new FormData()
       formData.append('file', file)
       formData.append('tipo_contesto', 'profile')
+      // passa l'ambito selezionato nel tab file (se non è 'tutti')
+      if (activeFileAmbito && activeFileAmbito !== 'tutti') {
+        formData.append('ambito', activeFileAmbito)
+      }
       const res = await fetch('/api/upload', { method: 'POST', body: formData })
       const data = await res.json()
       if (data.error) { alert(data.error); return }
@@ -239,6 +245,7 @@ export default function ProfilePage() {
         id: data.id, nome: data.nome, mime_type: data.mime_type,
         dimensione: data.dimensione, created_at: new Date().toISOString(),
         storage_path: data.storage_path,
+        ambito: data.ambito || null,
       }, ...prev])
       setSuccessMsg('File caricato!')
       setTimeout(() => setSuccessMsg(''), 2000)
@@ -550,39 +557,86 @@ export default function ProfilePage() {
         {/* TAB FILE */}
         {activeTab === 'file' && (
           <div>
+            {/* Subtab per ambito */}
+            <div className="flex gap-1 mb-4 overflow-x-auto" style={{ msOverflowStyle: 'none', scrollbarWidth: 'none' }}>
+              {[
+                { key: 'tutti', label: 'Tutti', emoji: '📁' },
+                ...ambitiData.map(ad => {
+                  const cfg = AMBITI_CONFIG.find(a => a.value === ad.ambito)
+                  return { key: ad.ambito, label: cfg?.label || ad.ambito, emoji: cfg?.emoji || '' }
+                }),
+              ].map(tab => (
+                <button key={tab.key} onClick={() => setActiveFileAmbito(tab.key)}
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-sm font-medium whitespace-nowrap flex-shrink-0 transition-all ${
+                    activeFileAmbito === tab.key
+                      ? 'border-gray-900 bg-gray-900 text-white'
+                      : 'border-gray-200 bg-white text-gray-600'
+                  }`}>
+                  <span>{tab.emoji}</span><span>{tab.label}</span>
+                </button>
+              ))}
+            </div>
+
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h2 className="text-sm font-semibold text-gray-900">File permanenti</h2>
-                <p className="text-xs text-gray-400 mt-0.5">Disponibili in tutte le conversazioni</p>
+                <h2 className="text-sm font-semibold text-gray-900">
+                  {activeFileAmbito === 'tutti' ? 'Tutti i file permanenti' : `File — ${AMBITI_CONFIG.find(a => a.value === activeFileAmbito)?.label || activeFileAmbito}`}
+                </h2>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  {activeFileAmbito === 'tutti'
+                    ? 'Tutti i file caricati permanentemente'
+                    : `Disponibili nelle chat ${AMBITI_CONFIG.find(a => a.value === activeFileAmbito)?.label?.toLowerCase() || ''}`}
+                </p>
               </div>
               <button onClick={() => fileInputRef.current?.click()} disabled={uploading}
                 className="flex items-center gap-2 bg-gray-900 text-white px-4 py-2.5 rounded-xl text-sm font-medium active:bg-gray-800 disabled:opacity-40 transition-colors">
                 {uploading ? '...' : '+ Aggiungi'}
               </button>
             </div>
+
             <input ref={fileInputRef} type="file"
               accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.jpg,.jpeg,.png,.webp"
               onChange={handleFileUpload} className="hidden" />
-            {profileFiles.length === 0 ? (
-              <div className="bg-white rounded-2xl border border-gray-200 p-8 text-center">
-                <p className="text-gray-400 text-sm">Nessun file caricato</p>
-                <p className="text-gray-300 text-xs mt-1">I file permanenti sono disponibili in tutte le chat</p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {profileFiles.map(f => (
-                  <div key={f.id} className="bg-white rounded-2xl border border-gray-200 px-4 py-3.5 flex items-center gap-3">
-                    <span className="text-xl">{getFileIcon(f.mime_type)}</span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900 truncate">{f.nome}</p>
-                      <p className="text-xs text-gray-400">{formatSize(f.dimensione)}</p>
+
+            {(() => {
+              const filtered = activeFileAmbito === 'tutti'
+                ? profileFiles
+                : profileFiles.filter(f => f.ambito === activeFileAmbito)
+              return filtered.length === 0 ? (
+                <div className="bg-white rounded-2xl border border-gray-200 p-8 text-center">
+                  <p className="text-gray-400 text-sm">Nessun file caricato</p>
+                  <p className="text-gray-300 text-xs mt-1">
+                    {activeFileAmbito === 'tutti'
+                      ? 'Carica file per renderli disponibili nelle chat'
+                      : `Carica file specifici per l'ambito ${AMBITI_CONFIG.find(a => a.value === activeFileAmbito)?.label?.toLowerCase() || ''}`}
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {filtered.map(f => (
+                    <div key={f.id} className="bg-white rounded-2xl border border-gray-200 px-4 py-3.5 flex items-center gap-3">
+                      <span className="text-xl">{getFileIcon(f.mime_type)}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900 truncate">{f.nome}</p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <p className="text-xs text-gray-400">{formatSize(f.dimensione)}</p>
+                          {f.ambito && activeFileAmbito === 'tutti' && (
+                            <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">
+                              {AMBITI_CONFIG.find(a => a.value === f.ambito)?.emoji} {AMBITI_CONFIG.find(a => a.value === f.ambito)?.label}
+                            </span>
+                          )}
+                          {!f.ambito && (
+                            <span className="text-xs bg-gray-100 text-gray-400 px-2 py-0.5 rounded-full">Tutti gli ambiti</span>
+                          )}
+                        </div>
+                      </div>
+                      <button onClick={() => deleteFile(f.id, f.storage_path)}
+                        className="text-gray-300 active:text-red-500 transition-colors text-lg p-1">🗑</button>
                     </div>
-                    <button onClick={() => deleteFile(f.id, f.storage_path)}
-                      className="text-gray-300 active:text-red-500 transition-colors text-lg p-1">🗑</button>
-                  </div>
-                ))}
-              </div>
-            )}
+                  ))}
+                </div>
+              )
+            })()}
           </div>
         )}
 
