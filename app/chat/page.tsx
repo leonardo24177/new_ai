@@ -346,6 +346,7 @@ export default function ChatPage() {
 
         {/* Footer sidebar */}
         <div className="p-4 border-t border-gray-200">
+          
           <button
             onClick={handleLogout}
             className="w-full text-sm text-gray-500 hover:text-gray-700 transition-colors text-left"
@@ -388,6 +389,12 @@ export default function ChatPage() {
           >
             <span>+</span> Nuova
           </button>
+          <button
+  onClick={() => router.push('/profile')}
+  className="text-xs text-gray-400 hover:text-gray-600 transition-colors mr-3"
+>
+  Profilo
+</button>
         </div>
 
         {/* Messaggi */}
