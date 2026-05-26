@@ -45,12 +45,32 @@ const AMBITI_CONFIG = [
 ]
 
 const PROFESSIONI = [
+  // Legale
   { value: 'avvocato', label: 'Avvocato', emoji: '⚖️' },
+  { value: 'notaio', label: 'Notaio', emoji: '📜' },
+  { value: 'magistrato', label: 'Magistrato', emoji: '🏛️' },
+  { value: 'consulente_lavoro', label: 'Consulente del lavoro', emoji: '📋' },
+  // Economico
   { value: 'commercialista', label: 'Commercialista', emoji: '📊' },
+  { value: 'revisore_contabile', label: 'Revisore contabile', emoji: '🔍' },
+  // Sanitario
   { value: 'medico', label: 'Medico', emoji: '🏥' },
-  { value: 'insegnante', label: 'Insegnante', emoji: '📚' },
+  { value: 'farmacista', label: 'Farmacista', emoji: '💊' },
+  { value: 'psicologo', label: 'Psicologo', emoji: '🧠' },
+  { value: 'fisioterapista', label: 'Fisioterapista', emoji: '🦴' },
+  // Tecnico
+  { value: 'ingegnere', label: 'Ingegnere', emoji: '⚙️' },
   { value: 'architetto', label: 'Architetto', emoji: '📐' },
+  { value: 'geometra', label: 'Geometra', emoji: '📏' },
+  // Istruzione
+  { value: 'insegnante', label: 'Insegnante', emoji: '📚' },
+  { value: 'professore_universitario', label: 'Professore universitario', emoji: '🎓' },
+  // Business e comunicazione
   { value: 'imprenditore', label: 'Imprenditore', emoji: '💼' },
+  { value: 'manager', label: 'Manager / Dirigente', emoji: '👔' },
+  { value: 'libero_professionista', label: 'Libero professionista', emoji: '🖥️' },
+  { value: 'giornalista', label: 'Giornalista', emoji: '📰' },
+  { value: 'ricercatore', label: 'Ricercatore', emoji: '🔬' },
   { value: 'altro', label: 'Altro', emoji: '👤' },
 ]
 
@@ -333,24 +353,37 @@ export default function ProfilePage() {
                     {/* Professione */}
                     <div className="bg-white rounded-2xl border border-gray-200 p-4">
                       <h3 className="text-sm font-semibold text-gray-900 mb-3">Professione</h3>
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                        {PROFESSIONI.map(p => (
-                          <button key={p.value}
-                            onClick={() => {
-                              updateAmbitoField('lavoro', 'professione', p.value)
-                              updateAmbitoField('lavoro', 'utilizzo', '')
-                              updateAmbitoField('lavoro', 'specializzazioni', [])
-                              updateAmbitoField('lavoro', 'fonti', [])
-                            }}
-                            className={`flex flex-col items-center gap-1 px-3 py-3 rounded-xl border text-xs font-medium transition-all ${
-                              currentAmbito.professione === p.value
-                                ? 'border-gray-900 bg-gray-900 text-white'
-                                : 'border-gray-200 text-gray-700'
-                            }`}>
-                            <span className="text-lg">{p.emoji}</span>{p.label}
-                          </button>
-                        ))}
-                      </div>
+                      {[
+                        { label: 'Legale', items: PROFESSIONI.filter(p => ['avvocato','notaio','magistrato','consulente_lavoro'].includes(p.value)) },
+                        { label: 'Economico', items: PROFESSIONI.filter(p => ['commercialista','revisore_contabile'].includes(p.value)) },
+                        { label: 'Sanitario', items: PROFESSIONI.filter(p => ['medico','farmacista','psicologo','fisioterapista'].includes(p.value)) },
+                        { label: 'Tecnico', items: PROFESSIONI.filter(p => ['ingegnere','architetto','geometra'].includes(p.value)) },
+                        { label: 'Istruzione', items: PROFESSIONI.filter(p => ['insegnante','professore_universitario'].includes(p.value)) },
+                        { label: 'Business e altro', items: PROFESSIONI.filter(p => ['imprenditore','manager','libero_professionista','giornalista','ricercatore','altro'].includes(p.value)) },
+                      ].map(cat => (
+                        <div key={cat.label} className="mb-4 last:mb-0">
+                          <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">{cat.label}</p>
+                          <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                            {cat.items.map(p => (
+                              <button key={p.value}
+                                onClick={() => {
+                                  updateAmbitoField('lavoro', 'professione', p.value)
+                                  updateAmbitoField('lavoro', 'utilizzo', '')
+                                  updateAmbitoField('lavoro', 'specializzazioni', [])
+                                  updateAmbitoField('lavoro', 'fonti', [])
+                                }}
+                                className={`flex flex-col items-center gap-1 px-2 py-3 rounded-xl border text-xs font-medium transition-all text-center ${
+                                  currentAmbito.professione === p.value
+                                    ? 'border-gray-900 bg-gray-900 text-white'
+                                    : 'border-gray-200 text-gray-700'
+                                }`}>
+                                <span className="text-lg">{p.emoji}</span>
+                                <span className="leading-tight">{p.label}</span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
                     </div>
 
                     {/* Utilizzo */}
