@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { modelColor, modelLabel, formatCosto } from '@/lib/model-pricing'
 
 interface User {
   id: string
@@ -22,19 +23,40 @@ interface Skill {
   pubblica: boolean
 }
 
+interface Stats {
+  totale_messaggi: number
+  totale_costo: number
+  totale_tokens: number
+  per_modello: {
+    model: string
+    label: string
+    count: number
+    tokens_input: number
+    tokens_output: number
+    costo_totale: number
+  }[]
+  per_utente: {
+    user_id: string
+    messaggi: number
+    costo_totale: number
+    modelli: Record<string, number>
+  }[]
+  per_giorno: { data: string; costo: number }[]
+}
+
 export default function AdminPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState<'utenti' | 'skill'>('utenti')
+  const [activeTab, setActiveTab] = useState<'utenti' | 'skill' | 'stats'>('utenti')
   const [users, setUsers] = useState<User[]>([])
   const [skills, setSkills] = useState<Skill[]>([])
+  const [stats, setStats] = useState<Stats | null>(null)
   const [selectedUser, setSelectedUser] = useState<User | null>(null)
   const [editingSkill, setEditingSkill] = useState<Skill | null>(null)
   const [newSkill, setNewSkill] = useState(false)
   const [saving, setSaving] = useState(false)
   const [successMsg, setSuccessMsg] = useState('')
 
-  // Form nuova/modifica skill
   const [skillForm, setSkillForm] = useState({
     slug: '', label: '', extra_sys: '', categoria: 'generale', pubblica: true
   })
@@ -73,19 +95,21 @@ export default function AdminPage() {
     setSkills(data || [])
   }
 
+  async function loadStats() {
+    if (stats) return // già caricato
+    const res = await fetch('/api/admin/stats')
+    const data = await res.json()
+    setStats(data)
+  }
+
   async function saveSkill() {
     setSaving(true)
     try {
       const supabase = createClient()
       if (editingSkill) {
-        await supabase
-          .from('skills')
-          .update(skillForm)
-          .eq('id', editingSkill.id)
+        await supabase.from('skills').update(skillForm).eq('id', editingSkill.id)
       } else {
-        await supabase
-          .from('skills')
-          .insert(skillForm)
+        await supabase.from('skills').insert(skillForm)
       }
       setSuccessMsg('Skill salvata!')
       setTimeout(() => setSuccessMsg(''), 2000)
@@ -117,11 +141,8 @@ export default function AdminPage() {
   function openEditSkill(skill: Skill) {
     setEditingSkill(skill)
     setSkillForm({
-      slug: skill.slug,
-      label: skill.label,
-      extra_sys: skill.extra_sys,
-      categoria: skill.categoria,
-      pubblica: skill.pubblica,
+      slug: skill.slug, label: skill.label, extra_sys: skill.extra_sys,
+      categoria: skill.categoria, pubblica: skill.pubblica,
     })
     setNewSkill(false)
   }
@@ -130,6 +151,10 @@ export default function AdminPage() {
     setNewSkill(true)
     setEditingSkill(null)
     setSkillForm({ slug: '', label: '', extra_sys: '', categoria: 'generale', pubblica: true })
+  }
+
+  function getUserEmail(userId: string) {
+    return users.find(u => u.id === userId)?.email || userId.slice(0, 8) + '...'
   }
 
   if (loading) {
@@ -160,10 +185,14 @@ export default function AdminPage() {
           {[
             { key: 'utenti', label: `Utenti (${users.length})` },
             { key: 'skill', label: `Skill (${skills.length})` },
+            { key: 'stats', label: '📊 Statistiche' },
           ].map(tab => (
             <button
               key={tab.key}
-              onClick={() => setActiveTab(tab.key as 'utenti' | 'skill')}
+              onClick={() => {
+                setActiveTab(tab.key as 'utenti' | 'skill' | 'stats')
+                if (tab.key === 'stats') loadStats()
+              }}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                 activeTab === tab.key
                   ? 'bg-white text-gray-900 shadow-sm'
@@ -217,8 +246,6 @@ export default function AdminPage() {
                       </button>
                     </div>
                   </div>
-
-                  {/* System prompt espandibile */}
                   {selectedUser?.id === user.id && (
                     <div className="mt-4 pt-4 border-t border-gray-100">
                       <p className="text-xs font-medium text-gray-500 mb-2">System Prompt</p>
@@ -248,7 +275,6 @@ export default function AdminPage() {
               </button>
             </div>
 
-            {/* Form nuova/modifica skill */}
             {(newSkill || editingSkill) && (
               <div className="bg-white rounded-2xl border border-gray-900 p-6 mb-4">
                 <h3 className="text-sm font-semibold text-gray-900 mb-4">
@@ -257,7 +283,7 @@ export default function AdminPage() {
                 <div className="space-y-3">
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-xs text-gray-500 mb-1 block">Label (nome visibile)</label>
+                      <label className="text-xs text-gray-500 mb-1 block">Label</label>
                       <input
                         type="text"
                         value={skillForm.label}
@@ -267,7 +293,7 @@ export default function AdminPage() {
                       />
                     </div>
                     <div>
-                      <label className="text-xs text-gray-500 mb-1 block">Slug (identificatore unico)</label>
+                      <label className="text-xs text-gray-500 mb-1 block">Slug</label>
                       <input
                         type="text"
                         value={skillForm.slug}
@@ -284,7 +310,6 @@ export default function AdminPage() {
                         type="text"
                         value={skillForm.categoria}
                         onChange={e => setSkillForm(p => ({ ...p, categoria: e.target.value }))}
-                        placeholder="Es. stile, professionale, educazione"
                         className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900"
                       />
                     </div>
@@ -294,18 +319,17 @@ export default function AdminPage() {
                           type="checkbox"
                           checked={skillForm.pubblica}
                           onChange={e => setSkillForm(p => ({ ...p, pubblica: e.target.checked }))}
-                          className="rounded"
                         />
-                        <span className="text-sm text-gray-700">Pubblica (visibile a tutti)</span>
+                        <span className="text-sm text-gray-700">Pubblica</span>
                       </label>
                     </div>
                   </div>
                   <div>
-                    <label className="text-xs text-gray-500 mb-1 block">Extra System Prompt (extra_sys)</label>
+                    <label className="text-xs text-gray-500 mb-1 block">Extra System Prompt</label>
                     <textarea
                       value={skillForm.extra_sys}
                       onChange={e => setSkillForm(p => ({ ...p, extra_sys: e.target.value }))}
-                      placeholder="Istruzioni aggiuntive da iniettare nel system prompt quando questa skill è attiva..."
+                      placeholder="Istruzioni aggiuntive da iniettare..."
                       rows={6}
                       className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 font-mono focus:outline-none focus:ring-2 focus:ring-gray-900 resize-none"
                     />
@@ -329,7 +353,6 @@ export default function AdminPage() {
               </div>
             )}
 
-            {/* Lista skill */}
             <div className="space-y-2">
               {Object.entries(
                 skills.reduce((acc, s) => {
@@ -373,6 +396,132 @@ export default function AdminPage() {
                 </div>
               ))}
             </div>
+          </div>
+        )}
+
+        {/* TAB STATISTICHE */}
+        {activeTab === 'stats' && (
+          <div>
+            {!stats ? (
+              <div className="bg-white rounded-2xl border border-gray-200 p-8 text-center">
+                <p className="text-gray-400 text-sm">Caricamento statistiche...</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+
+                {/* KPI */}
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="bg-white rounded-2xl border border-gray-200 p-5">
+                    <p className="text-xs text-gray-400 mb-1">Messaggi totali</p>
+                    <p className="text-2xl font-semibold text-gray-900">{stats.totale_messaggi.toLocaleString()}</p>
+                  </div>
+                  <div className="bg-white rounded-2xl border border-gray-200 p-5">
+                    <p className="text-xs text-gray-400 mb-1">Costo totale stimato</p>
+                    <p className="text-2xl font-semibold text-gray-900">${stats.totale_costo.toFixed(4)}</p>
+                  </div>
+                  <div className="bg-white rounded-2xl border border-gray-200 p-5">
+                    <p className="text-xs text-gray-400 mb-1">Token totali</p>
+                    <p className="text-2xl font-semibold text-gray-900">{(stats.totale_tokens / 1000).toFixed(1)}K</p>
+                  </div>
+                </div>
+
+                {/* Per modello */}
+                <div className="bg-white rounded-2xl border border-gray-200 p-5">
+                  <h3 className="text-sm font-semibold text-gray-900 mb-4">Distribuzione modelli</h3>
+                  {stats.per_modello.length === 0 ? (
+                    <p className="text-xs text-gray-400">Nessun dato ancora</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {stats.per_modello
+                        .sort((a, b) => b.count - a.count)
+                        .map(m => {
+                          const pct = stats.totale_messaggi > 0
+                            ? Math.round((m.count / stats.totale_messaggi) * 100)
+                            : 0
+                          return (
+                            <div key={m.model}>
+                              <div className="flex items-center justify-between mb-1">
+                                <div className="flex items-center gap-2">
+                                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${modelColor(m.model)}`}>
+                                    {m.label}
+                                  </span>
+                                  <span className="text-xs text-gray-500">{m.count} msg · {pct}%</span>
+                                </div>
+                                <div className="text-right">
+                                  <p className="text-xs font-medium text-gray-900">${m.costo_totale.toFixed(4)}</p>
+                                  <p className="text-xs text-gray-400">
+                                    {((m.tokens_input + m.tokens_output) / 1000).toFixed(1)}K token
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                <div
+                                  className="h-full bg-gray-900 rounded-full transition-all"
+                                  style={{ width: `${pct}%` }}
+                                />
+                              </div>
+                            </div>
+                          )
+                        })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Per utente */}
+                <div className="bg-white rounded-2xl border border-gray-200 p-5">
+                  <h3 className="text-sm font-semibold text-gray-900 mb-4">Costo per utente</h3>
+                  {stats.per_utente.length === 0 ? (
+                    <p className="text-xs text-gray-400">Nessun dato ancora</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {stats.per_utente.slice(0, 10).map(u => (
+                        <div key={u.user_id} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm text-gray-900 truncate">{getUserEmail(u.user_id)}</p>
+                            <div className="flex gap-1 mt-0.5">
+                              {Object.entries(u.modelli).map(([mod, count]) => (
+                                <span key={mod} className={`text-xs px-1.5 py-0.5 rounded ${modelColor(mod.toLowerCase().includes('haiku') ? 'haiku' : mod.toLowerCase().includes('opus') ? 'opus' : 'sonnet')}`}>
+                                  {mod}: {count}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                          <div className="text-right ml-4">
+                            <p className="text-sm font-medium text-gray-900">{formatCosto(u.costo_totale)}</p>
+                            <p className="text-xs text-gray-400">{u.messaggi} msg</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Costo per giorno */}
+                {stats.per_giorno.length > 0 && (
+                  <div className="bg-white rounded-2xl border border-gray-200 p-5">
+                    <h3 className="text-sm font-semibold text-gray-900 mb-4">Costo ultimi 30 giorni</h3>
+                    <div className="flex items-end gap-1 h-24">
+                      {(() => {
+                        const max = Math.max(...stats.per_giorno.map(d => d.costo), 0.0001)
+                        return stats.per_giorno.map(d => (
+                          <div
+                            key={d.data}
+                            className="flex-1 bg-gray-900 rounded-t opacity-80 hover:opacity-100 transition-opacity cursor-pointer"
+                            style={{ height: `${(d.costo / max) * 100}%`, minHeight: '2px' }}
+                            title={`${d.data}: ${formatCosto(d.costo)}`}
+                          />
+                        ))
+                      })()}
+                    </div>
+                    <div className="flex justify-between mt-1">
+                      <p className="text-xs text-gray-400">{stats.per_giorno[0]?.data}</p>
+                      <p className="text-xs text-gray-400">{stats.per_giorno[stats.per_giorno.length - 1]?.data}</p>
+                    </div>
+                  </div>
+                )}
+
+              </div>
+            )}
           </div>
         )}
       </div>

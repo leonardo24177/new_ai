@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
 import { selectModel } from '@/lib/model-selector'
+import { calcolaCosto } from '@/lib/model-pricing'
 
 const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
@@ -22,7 +23,7 @@ export async function POST(req: NextRequest) {
       conversation_id,
       file_contexts,
       active_skill_slugs,
-      ambito_attivo,  // nuovo: ambito selezionato dall'utente nella chat
+      ambito_attivo,
     } = await req.json()
 
     // 1. Recupera system prompt base
@@ -44,11 +45,11 @@ export async function POST(req: NextRequest) {
 
     const professione = ambitoLavoro?.onboarding_data?.professione || ''
 
-    // 3. Se c'è un ambito attivo, inietta il system prompt extra di quell'ambito
+    // 3. Inietta system prompt extra dell'ambito attivo
     if (ambito_attivo) {
       const { data: ambitoData } = await supabase
         .from('user_ambiti')
-        .select('system_prompt_extra, onboarding_data')
+        .select('system_prompt_extra')
         .eq('user_id', user.id)
         .eq('ambito', ambito_attivo)
         .single()
@@ -58,7 +59,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 4. Inietta extra_sys skill singola (legacy)
+    // 4. Inietta skill singola (legacy)
     if (skill_slug) {
       const { data: skill } = await supabase
         .from('skills')
@@ -71,11 +72,11 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 5. Inietta extra_sys skill multiple attive
+    // 5. Inietta skill multiple
     if (active_skill_slugs && active_skill_slugs.length > 0) {
       const { data: activeSkillsData } = await supabase
         .from('skills')
-        .select('extra_sys, label')
+        .select('extra_sys')
         .in('slug', active_skill_slugs)
 
       if (activeSkillsData && activeSkillsData.length > 0) {
@@ -84,15 +85,13 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 6. Recupera file permanenti filtrati per ambito attivo
+    // 6. File di profilo filtrati per ambito
     let profileFilesQuery = supabase
       .from('user_files')
-      .select('nome, storage_path, mime_type, ambito')
+      .select('nome, storage_path, ambito')
       .eq('user_id', user.id)
       .eq('tipo_contesto', 'profile')
 
-    // Filtra per ambito: se c'è un ambito attivo, mostra solo i file di quell'ambito
-    // o i file senza ambito (null = generici)
     if (ambito_attivo) {
       profileFilesQuery = profileFilesQuery.or(`ambito.eq.${ambito_attivo},ambito.is.null`)
     }
@@ -110,10 +109,8 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // File chat temporanei — filtrati per ambito se presente
     if (file_contexts && file_contexts.length > 0) {
       for (const fc of file_contexts) {
-        // I file chat temporanei vengono sempre inclusi (l'utente li ha allegati esplicitamente)
         if (fc.testo) {
           fileTexts.push(`[File allegato: ${fc.nome}]\n${fc.testo}`)
         } else if (fc.nome) {
@@ -133,7 +130,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 8. Selezione dinamica del modello
+    // 8. Selezione dinamica modello
     const lastUserMessage = messages[messages.length - 1]?.content || ''
     const { model, reason } = selectModel({
       userMessage: lastUserMessage,
@@ -172,18 +169,29 @@ export async function POST(req: NextRequest) {
       ? response.content[0].text
       : ''
 
-    // 11. Salva risposta
+    // 11. Calcola costo
+    const tokensInput = response.usage.input_tokens
+    const tokensOutput = response.usage.output_tokens
+    const costoStimato = calcolaCosto(model, tokensInput, tokensOutput)
+
+    // 12. Salva risposta con tracking
     if (conversation_id) {
       await supabase.from('messages').insert({
         conversation_id,
         ruolo: 'assistant',
         contenuto: assistantMessage,
+        modello: model,
+        tokens_input: tokensInput,
+        tokens_output: tokensOutput,
+        costo_stimato: costoStimato,
       })
     }
 
     return NextResponse.json({
       message: assistantMessage,
       model_used: model,
+      tokens: { input: tokensInput, output: tokensOutput },
+      costo: costoStimato,
     })
 
   } catch (error) {
