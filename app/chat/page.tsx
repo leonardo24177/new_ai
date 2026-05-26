@@ -121,6 +121,7 @@ export default function ChatPage() {
   const [activeSkills, setActiveSkills] = useState<string[]>([])
   const [showSkills, setShowSkills] = useState(false)
   const [loadingHistory, setLoadingHistory] = useState(false)
+  const [isAdmin, setIsAdmin] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -152,13 +153,22 @@ export default function ChatPage() {
       .single()
 
     if (conv) setConversationId(conv.id)
-      // Carica skill disponibili
+
+    // Carica skill disponibili
     const { data: publicSkills } = await supabase
       .from('skills')
       .select('id, slug, label, extra_sys')
       .eq('pubblica', true)
     if (publicSkills) setSkills(publicSkills)
-      }
+
+    // Verifica se admin
+    const { data: admin } = await supabase
+      .from('admins')
+      .select('user_id')
+      .eq('user_id', user.id)
+      .single()
+    if (admin) setIsAdmin(true)
+  }
 
   async function loadConversations() {
     setLoadingHistory(true)
@@ -218,9 +228,7 @@ export default function ChatPage() {
       body: JSON.stringify({ conversation_id: convId }),
     })
     setConversations(prev => prev.filter(c => c.id !== convId))
-    if (convId === conversationId) {
-      newConversation()
-    }
+    if (convId === conversationId) newConversation()
   }
 
   async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -258,7 +266,6 @@ export default function ChatPage() {
     setFileContexts([])
     if (textareaRef.current) textareaRef.current.style.height = 'auto'
 
-    // Genera titolo al primo messaggio
     if (isFirstMessage.current && conversationId) {
       isFirstMessage.current = false
       fetch('/api/conversations', {
@@ -272,12 +279,12 @@ export default function ChatPage() {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-  messages: newMessages, 
-  conversation_id: conversationId, 
-  file_contexts: sentFiles,
-  active_skill_slugs: activeSkills,
-}),
+        body: JSON.stringify({
+          messages: newMessages,
+          conversation_id: conversationId,
+          file_contexts: sentFiles,
+          active_skill_slugs: activeSkills,
+        }),
       })
       const data = await res.json()
       if (data.message) {
@@ -316,8 +323,6 @@ export default function ChatPage() {
           <h2 className="text-sm font-semibold text-gray-900">Conversazioni</h2>
           <button onClick={() => setSidebarOpen(false)} className="text-gray-400 hover:text-gray-600">✕</button>
         </div>
-
-        {/* Nuova chat */}
         <div className="p-3 border-b border-gray-200">
           <button
             onClick={newConversation}
@@ -327,8 +332,6 @@ export default function ChatPage() {
             <span>Nuova conversazione</span>
           </button>
         </div>
-
-        {/* Lista conversazioni */}
         <div className="flex-1 overflow-y-auto p-3 space-y-1">
           {loadingHistory ? (
             <p className="text-xs text-gray-400 text-center py-4">Caricamento...</p>
@@ -342,9 +345,7 @@ export default function ChatPage() {
                 className={`group flex items-center justify-between px-3 py-2.5 rounded-xl cursor-pointer transition-colors ${conv.id === conversationId ? 'bg-gray-200' : 'hover:bg-gray-100'}`}
               >
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm text-gray-900 truncate">
-                    {conv.titolo || 'Nuova conversazione'}
-                  </p>
+                  <p className="text-sm text-gray-900 truncate">{conv.titolo || 'Nuova conversazione'}</p>
                   <p className="text-xs text-gray-400">{formatDate(conv.created_at)}</p>
                 </div>
                 <button
@@ -357,10 +358,7 @@ export default function ChatPage() {
             ))
           )}
         </div>
-
-        {/* Footer sidebar */}
         <div className="p-4 border-t border-gray-200">
-          
           <button
             onClick={handleLogout}
             className="w-full text-sm text-gray-500 hover:text-gray-700 transition-colors text-left"
@@ -397,18 +395,28 @@ export default function ChatPage() {
               {nomeUtente && <p className="text-xs text-gray-400">Ciao, {nomeUtente}</p>}
             </div>
           </div>
-          <button
-            onClick={newConversation}
-            className="text-xs text-gray-400 hover:text-gray-600 transition-colors flex items-center gap-1"
-          >
-            <span>+</span> Nuova
-          </button>
-          <button
-  onClick={() => router.push('/profile')}
-  className="text-xs text-gray-400 hover:text-gray-600 transition-colors mr-3"
->
-  Profilo
-</button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={newConversation}
+              className="text-xs text-gray-400 hover:text-gray-600 transition-colors flex items-center gap-1"
+            >
+              <span>+</span> Nuova
+            </button>
+            <button
+              onClick={() => router.push('/profile')}
+              className="text-xs text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              Profilo
+            </button>
+            {isAdmin && (
+              <button
+                onClick={() => router.push('/admin')}
+                className="text-xs text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                Admin
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Messaggi */}
@@ -436,36 +444,38 @@ export default function ChatPage() {
           )}
           <div ref={bottomRef} />
         </div>
-{/* Skill selector */}
-{skills.length > 0 && (
-  <div className="px-4 pb-2">
-    <div className="flex items-center gap-2 flex-wrap">
-      <button
-        onClick={() => setShowSkills(!showSkills)}
-        className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1"
-      >
-        ✦ Skill {activeSkills.length > 0 && `(${activeSkills.length})`}
-      </button>
-      {showSkills && skills.map(skill => (
-        <button
-          key={skill.id}
-          onClick={() => setActiveSkills(prev =>
-            prev.includes(skill.slug)
-              ? prev.filter(s => s !== skill.slug)
-              : [...prev, skill.slug]
-          )}
-          className={`text-xs px-3 py-1.5 rounded-full border transition-all ${
-            activeSkills.includes(skill.slug)
-              ? 'bg-gray-900 text-white border-gray-900'
-              : 'bg-white text-gray-600 border-gray-200 hover:border-gray-400'
-          }`}
-        >
-          {skill.label}
-        </button>
-      ))}
-    </div>
-  </div>
-)}
+
+        {/* Skill selector */}
+        {skills.length > 0 && (
+          <div className="px-4 pb-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                onClick={() => setShowSkills(!showSkills)}
+                className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1"
+              >
+                ✦ Skill {activeSkills.length > 0 && `(${activeSkills.length})`}
+              </button>
+              {showSkills && skills.map(skill => (
+                <button
+                  key={skill.id}
+                  onClick={() => setActiveSkills(prev =>
+                    prev.includes(skill.slug)
+                      ? prev.filter(s => s !== skill.slug)
+                      : [...prev, skill.slug]
+                  )}
+                  className={`text-xs px-3 py-1.5 rounded-full border transition-all ${
+                    activeSkills.includes(skill.slug)
+                      ? 'bg-gray-900 text-white border-gray-900'
+                      : 'bg-white text-gray-600 border-gray-200 hover:border-gray-400'
+                  }`}
+                >
+                  {skill.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* File allegati */}
         {fileContexts.length > 0 && (
           <div className="px-4 pb-2 flex flex-wrap gap-2">
