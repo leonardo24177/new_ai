@@ -88,7 +88,7 @@ export async function POST(req: NextRequest) {
     // 6. File di profilo filtrati per ambito
     let profileFilesQuery = supabase
       .from('user_files')
-      .select('nome, storage_path, ambito')
+      .select('nome, storage_path, ambito, testo_contenuto, tipo, url')
       .eq('user_id', user.id)
       .eq('tipo_contesto', 'profile')
 
@@ -105,7 +105,17 @@ export async function POST(req: NextRequest) {
     if (profileFiles && profileFiles.length > 0) {
       for (const f of profileFiles) {
         const ambitoTag = f.ambito ? ` [${f.ambito}]` : ''
-        fileTexts.push(`[File di profilo${ambitoTag}: ${f.nome}]`)
+        if (f.testo_contenuto && f.testo_contenuto.trim().length > 0) {
+          // Inietta il contenuto reale del file/link
+          const tipoLabel = f.tipo === 'link' ? 'Link' : 'File'
+          fileTexts.push(`[${tipoLabel} verificato${ambitoTag}: ${f.nome}]\n${f.testo_contenuto.slice(0, 30000)}`)
+        } else if (f.tipo === 'link' && f.url) {
+          // Link senza contenuto scaricato — solo riferimento
+          fileTexts.push(`[Link di riferimento${ambitoTag}: ${f.nome} — ${f.url}] (contenuto non scaricato)`)
+        } else if (f.storage_path) {
+          // File caricato senza testo estratto
+          fileTexts.push(`[File di profilo${ambitoTag}: ${f.nome}] (contenuto non disponibile in questo contesto)`)
+        }
       }
     }
 

@@ -3,16 +3,40 @@ import Anthropic from '@anthropic-ai/sdk'
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! })
 
+const REGOLA_FONTI_FORTE = `
+REGOLA ASSOLUTA — DA APPLICARE PRIMA DI OGNI RISPOSTA:
+Prima di rispondere a qualsiasi domanda che richieda fatti specifici, norme, sentenze, numeri, date, articoli di legge o riferimenti precisi, verifica mentalmente se hai accesso reale e verificato a quella fonte.
+
+Se NON hai accesso verificato alla fonte, DEVI iniziare la risposta IMMEDIATAMENTE con questo avviso, prima di qualsiasi altro contenuto:
+
+⚠️ FONTE NON VERIFICATA: Le informazioni seguenti NON provengono dalle tue fonti attendibili. Potrebbero contenere errori o imprecisioni. Verifica sempre prima di utilizzarle in ambito professionale.
+
+REGOLE VINCOLANTI:
+- NON fornire mai riferimenti a sentenze specifiche, articoli, circolari o dati precisi senza l'avviso se non provengono da fonti verificate
+- È OBBLIGATORIO dire "non ho accesso verificato a questa fonte" piuttosto che inventare o dedurre informazioni specifiche
+- La conoscenza generale di diritto, medicina, contabilità ecc. NON equivale ad avere accesso verificato a una fonte specifica
+- Se l'utente non ti ha fornito il testo di un documento, NON puoi descriverne i dettagli come se li conoscessi
+- Preferisci sempre la trasparenza sull'incertezza alla completezza apparente
+`
+
 export async function POST(req: NextRequest) {
   try {
     const { nome, ambitiData, note_libere } = await req.json()
 
     const ambiti_prompts: string[] = []
 
-    // Genera un blocco di prompt per ogni ambito
     for (const ad of ambitiData) {
       const fontiFiltrate = ad.fonti?.filter((f: { id: string }) => !ad.fonti_escluse?.includes(f.id)) || []
       const gerarchia = fontiFiltrate.map((f: { label: string }, i: number) => `${i + 1}. ${f.label}`).join('\n')
+
+      // Gestione specializzazioni multiple
+      const specializzazioni = ad.specializzazioni?.length > 0
+        ? ad.specializzazioni.join(', ')
+        : ad.specializzazione || ''
+
+      const specializzazioneCustom = ad.specializzazione_custom?.trim()
+        ? `\nSpecializzazione aggiuntiva: ${ad.specializzazione_custom}`
+        : ''
 
       let contestoAmbito = ''
       if (ad.ambito === 'lavoro') {
@@ -20,7 +44,7 @@ export async function POST(req: NextRequest) {
 Ambito: Lavoro professionale
 Professione: ${ad.professione}
 Utilizzo principale: ${ad.utilizzo}
-${ad.specializzazione ? `Specializzazione: ${ad.specializzazione}` : ''}
+${specializzazioni ? `Specializzazioni: ${specializzazioni}` : ''}${specializzazioneCustom}
 ${gerarchia ? `Gerarchia fonti attendibili:\n${gerarchia}` : ''}
 ${ad.fonti_escluse?.length > 0 ? `Fonti escluse: ${ad.fonti_escluse.join(', ')}` : ''}
 Citazione fonti: ${ad.citazione}
@@ -42,18 +66,24 @@ Tono: ${ad.tono}`
 
 ${contestoAmbito}
 
-ISTRUZIONI:
+ISTRUZIONI PER LA GENERAZIONE:
 1. Il blocco deve essere in italiano
-2. Massimo 200 parole
+2. Massimo 250 parole
 3. Scritto in seconda persona (tu sei...)
-4. ${gerarchia ? 'INCLUDI SEMPRE questa istruzione esatta: "Quando fornisci informazioni che NON provengono dalle fonti attendibili definite, segnalalo SEMPRE con: ⚠️ FONTE NON VERIFICATA: Questa informazione non proviene dalle tue fonti attendibili. Verifica prima di utilizzarla."' : ''}
-5. NON includere meta-commenti - inizia direttamente con il contenuto
+4. DEVI includere LETTERALMENTE questa sezione nella risposta generata:
+
+--- INIZIO SEZIONE OBBLIGATORIA ---
+${REGOLA_FONTI_FORTE}
+--- FINE SEZIONE OBBLIGATORIA ---
+
+${gerarchia ? `5. Includi la gerarchia delle fonti: ${gerarchia}` : ''}
+6. NON includere meta-commenti - inizia direttamente con il contenuto del ruolo
 
 Genera il blocco:`
 
       const message = await client.messages.create({
         model: 'claude-sonnet-4-5',
-        max_tokens: 500,
+        max_tokens: 800,
         messages: [{ role: 'user', content: prompt }],
       })
 
@@ -62,7 +92,9 @@ Genera il blocco:`
     }
 
     // Genera il system prompt finale combinato
-    const ambitiDesc = ambitiData.map((ad: { ambito: string }, i: number) => `[${ad.ambito.toUpperCase()}]\n${ambiti_prompts[i]}`).join('\n\n---\n\n')
+    const ambitiDesc = ambitiData.map((ad: { ambito: string }, i: number) =>
+      `[${ad.ambito.toUpperCase()}]\n${ambiti_prompts[i]}`
+    ).join('\n\n---\n\n')
 
     const finalPrompt = `Crea un system prompt coerente e unificato per un assistente AI personale per ${nome}.
 
@@ -71,18 +103,19 @@ ${ambitiDesc}
 
 ${note_libere ? `Note aggiuntive dell'utente: ${note_libere}` : ''}
 
-ISTRUZIONI:
+ISTRUZIONI CRITICHE:
 1. Unifica i blocchi in un unico system prompt fluido e coerente
-2. Mantieni tutte le istruzioni specifiche per ogni ambito
-3. Massimo 600 parole
-4. In italiano, seconda persona
-5. NON includere meta-commenti - inizia direttamente
+2. Mantieni INTATTE tutte le regole sulle fonti non verificate — non riassumere, non semplificare
+3. La sezione "REGOLA ASSOLUTA — DA APPLICARE PRIMA DI OGNI RISPOSTA" deve apparire COMPLETA nel prompt finale
+4. Massimo 800 parole totali
+5. In italiano, seconda persona
+6. NON includere meta-commenti - inizia direttamente
 
 System prompt finale:`
 
     const finalMessage = await client.messages.create({
       model: 'claude-sonnet-4-5',
-      max_tokens: 1500,
+      max_tokens: 2000,
       messages: [{ role: 'user', content: finalPrompt }],
     })
 
