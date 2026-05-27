@@ -28,6 +28,7 @@ interface AmbitoData {
   conflitto_fonti: string
   tono: string
   livello_studio: string
+  materia_studio: string
   uso_personale: string
 }
 
@@ -104,6 +105,7 @@ function normalizeAmbitoData(raw: Record<string, unknown>): AmbitoData {
     conflitto_fonti: (raw.conflitto_fonti as string) || 'gerarchia',
     tono: (raw.tono as string) || 'formale',
     livello_studio: (raw.livello_studio as string) || '',
+    materia_studio: (raw.materia_studio as string) || '',
     uso_personale: (raw.uso_personale as string) || '',
   }
 }

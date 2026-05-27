@@ -77,6 +77,7 @@ Tono: ${ad.tono}`
       } else if (ad.ambito === 'studio') {
         contestoAmbito = `
 Ambito: Studio
+${ad.materia_studio ? `Materia / Corso: ${ad.materia_studio}` : ''}
 Livello: ${ad.livello_studio}
 Tono: ${ad.tono}`
       } else if (ad.ambito === 'personale') {

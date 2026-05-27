@@ -24,6 +24,7 @@ interface AmbitoData {
   citazione: 'sempre' | 'essenziale' | 'mai'
   conflitto_fonti: 'gerarchia' | 'entrambe' | 'chiedi'
   tono: 'formale' | 'diretto' | 'colloquiale'
+  materia_studio: string
   livello_studio: string
   uso_personale: string
   // ── NUOVI CAMPI PERSONALE ──────────────────────────────
@@ -40,7 +41,7 @@ function defaultAmbitoData(ambito: Ambito): AmbitoData {
     ambito, professione: '', utilizzo: '', specializzazioni: [],
     specializzazione_custom: '', fonti: [], fonti_escluse: [],
     citazione: 'sempre', conflitto_fonti: 'gerarchia', tono: 'formale',
-    livello_studio: '', uso_personale: '',
+    materia_studio: '', livello_studio: '', uso_personale: '',
     interessi: [], interessi_custom: '',
     obiettivi: [], obiettivi_custom: '',
     stile_vita: [], stile_vita_custom: '',
@@ -116,7 +117,7 @@ function getStepsForAmbito(a: AmbitoData): string[] {
     steps.push('fonti', 'citazione', 'conflitto_tono')
     return steps
   }
-  if (a.ambito === 'studio') return ['livello', 'tono']
+  if (a.ambito === 'studio') return ['materia', 'livello', 'tono']
   if (a.ambito === 'personale') return ['interessi', 'obiettivi', 'stile_vita', 'uso', 'tono']
   return []
 }
@@ -266,7 +267,7 @@ export default function OnboardingForm() {
   function showNext() {
     if (globalStep.phase !== 'ambito') return false
     const step = getStepsForAmbito(ambitiData[globalStep.ambitoIndex])[globalStep.stepIndex]
-    return ['fonti', 'conflitto_tono', 'specializzazione', 'interessi', 'obiettivi', 'stile_vita'].includes(step)
+    return ['fonti', 'conflitto_tono', 'specializzazione', 'interessi', 'obiettivi', 'stile_vita', 'materia'].includes(step)
   }
 
   function renderStep() {
@@ -457,6 +458,30 @@ export default function OnboardingForm() {
                   </button>
                 ))}
               </div>
+            </>
+          )}
+
+          {currentStepName === 'materia' && (
+            <>
+              <h2 className="text-xl font-semibold text-gray-900 mb-1">Cosa studi?</h2>
+              <p className="text-gray-500 text-sm mb-5">Scrivilo o scegli tra le opzioni comuni</p>
+              <div className="flex flex-wrap gap-2 mb-4">
+                {['Ingegneria', 'Medicina', 'Giurisprudenza', 'Economia', 'Psicologia', 'Architettura', 'Informatica', 'Scienze politiche', 'Lettere', 'Fisica / Matematica', 'Biologia', 'Chimica'].map(m => (
+                  <button key={m}
+                    onClick={() => { updateAmbitoData(ambitoIndex, 'materia_studio', m); nextStep() }}
+                    className={`px-3 py-2 rounded-xl border text-sm font-medium transition-all ${ad.materia_studio === m ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-200 text-gray-700'}`}>
+                    {m}
+                  </button>
+                ))}
+              </div>
+              <input
+                type="text"
+                value={ad.materia_studio}
+                onChange={e => updateAmbitoData(ambitoIndex, 'materia_studio', e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && ad.materia_studio.trim()) nextStep() }}
+                placeholder="Altra materia..."
+                className="w-full px-4 py-4 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-gray-400"
+              />
             </>
           )}
 
