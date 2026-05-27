@@ -39,10 +39,10 @@ export async function GET() {
 
     if (!admin) return NextResponse.json({ error: 'Non autorizzato' }, { status: 403 })
 
-    // Statistiche globali
+    // Statistiche globali — conversation_id aggiunto per collegare i messaggi agli utenti
     const { data: globalStats } = await supabase
       .from('messages')
-      .select('modello, tokens_input, tokens_output, costo_stimato, created_at')
+      .select('modello, tokens_input, tokens_output, costo_stimato, created_at, conversation_id')
       .eq('ruolo', 'assistant')
       .not('modello', 'is', null)
 
@@ -92,7 +92,7 @@ export async function GET() {
     }> = {}
 
     for (const msg of globalStats) {
-      const convId = (msg as Record<string, unknown>).conversation_id as string
+      const convId = msg.conversation_id as string
       const userId = convMap[convId]
       if (!userId) continue
 
