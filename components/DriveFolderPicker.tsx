@@ -33,7 +33,6 @@ export default function DriveFolderPicker({ folders, onChange }: Props) {
   const [pickerLoading, setPickerLoading] = useState(false)
   const [editingIdx, setEditingIdx] = useState<number | null>(null)
 
-  // Carica solo la Picker API, senza auth2
   useEffect(() => {
     function loadPicker() {
       const script = document.createElement('script')
@@ -63,13 +62,18 @@ export default function DriveFolderPicker({ folders, onChange }: Props) {
     setPickerLoading(true)
 
     try {
-      // Recupera il token Google dalla sessione Supabase
       const supabase = createClient()
       const { data: { session } } = await supabase.auth.getSession()
+
+      // DEBUG — rimuovere dopo il test
+      console.log('Session completa:', session)
+      console.log('provider_token:', session?.provider_token)
+      console.log('access_token:', session?.access_token)
+
       const accessToken = session?.provider_token
 
       if (!accessToken) {
-        alert('Token Google non disponibile. Prova a fare logout e login di nuovo con Google.')
+        alert(`Token Google non disponibile.\n\nDebug:\n- provider_token: ${session?.provider_token}\n- user: ${session?.user?.email}\n\nProva logout + login con Google.`)
         return
       }
 
