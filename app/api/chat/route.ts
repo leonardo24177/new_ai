@@ -58,7 +58,12 @@ async function readDriveFile(
     } else if (
       file.mimeType === 'text/plain' ||
       file.mimeType === 'text/markdown' ||
-      file.mimeType === 'text/csv'
+      file.mimeType === 'text/csv' ||
+      file.mimeType === 'application/json' ||
+      file.mimeType === 'text/html' ||
+      file.mimeType === 'text/xml' ||
+      file.mimeType === 'application/xml' ||
+      file.mimeType.startsWith('text/')
     ) {
       url = `https://www.googleapis.com/drive/v3/files/${file.id}?alt=media`
     } else {
