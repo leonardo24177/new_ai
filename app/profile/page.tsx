@@ -340,6 +340,15 @@ export default function ProfilePage() {
     setProfileFiles(prev => prev.filter(f => f.id !== fileId))
   }
 
+  async function deleteFolder(files: { id: string; storage_path: string }[]) {
+    const supabase = createClient()
+    const paths = files.map(f => f.storage_path)
+    const ids = files.map(f => f.id)
+    await supabase.storage.from('user-files').remove(paths)
+    await supabase.from('user_files').delete().in('id', ids)
+    setProfileFiles(prev => prev.filter(f => !ids.includes(f.id)))
+  }
+
   async function saveDriveFolders() {
     setSaving(true)
     try {
@@ -734,7 +743,7 @@ export default function ProfilePage() {
                   <p className="text-gray-300 text-xs mt-1">Carica file singoli o un&apos;intera cartella</p>
                 </div>
               ) : (
-                <FileTree files={filtered} onDelete={deleteFile} />
+                <FileTree files={filtered} onDelete={deleteFile} onDeleteFolder={deleteFolder} />
               )
             })()}
           </div>
