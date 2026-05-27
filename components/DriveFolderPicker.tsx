@@ -28,51 +28,112 @@ declare global {
   }
 }
 
+const CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID!
+const SCOPE = 'https://www.googleapis.com/auth/drive.readonly'
+
 export default function DriveFolderPicker({ folders, onChange }: Props) {
   const [pickerReady, setPickerReady] = useState(false)
   const [pickerLoading, setPickerLoading] = useState(false)
+  const [connecting, setConnecting] = useState(false)
+  const [driveToken, setDriveToken] = useState<string | null>(null)
   const [editingIdx, setEditingIdx] = useState<number | null>(null)
 
-  // Carica solo la Picker API, senza auth2
+  // Carica gapi picker + Google Identity Services
   useEffect(() => {
-    function loadPicker() {
+    // Carica gapi
+    function loadGapi() {
       const script = document.createElement('script')
       script.src = 'https://apis.google.com/js/api.js'
       script.onload = () => {
-        window.gapi.load('picker', () => {
-          setPickerReady(true)
-        })
+        window.gapi.load('picker', () => setPickerReady(true))
       }
-      script.onerror = () => console.error('Errore caricamento gapi')
       document.body.appendChild(script)
     }
 
-    if (typeof window !== 'undefined') {
-      if (!window.gapi) {
-        loadPicker()
-      } else if (window.google?.picker) {
-        setPickerReady(true)
-      } else {
-        window.gapi.load('picker', () => setPickerReady(true))
+    // Carica Google Identity Services (nuovo sistema OAuth Google)
+    function loadGIS() {
+      if (document.querySelector('script[src*="accounts.google.com/gsi"]')) return
+      const script = document.createElement('script')
+      script.src = 'https://accounts.google.com/gsi/client'
+      document.body.appendChild(script)
+    }
+
+    if (!window.gapi) loadGapi()
+    else window.gapi.load('picker', () => setPickerReady(true))
+
+    loadGIS()
+
+    // Recupera token salvato da Supabase
+    async function loadSavedToken() {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      const { data } = await supabase
+        .from('user_configs')
+        .select('google_drive_token, google_drive_token_expiry')
+        .eq('user_id', user.id)
+        .single()
+
+      if (data?.google_drive_token) {
+        // Controlla se non è scaduto (con 5 min di margine)
+        const expiry = data.google_drive_token_expiry
+          ? new Date(data.google_drive_token_expiry).getTime()
+          : 0
+        if (!expiry || expiry > Date.now() + 5 * 60 * 1000) {
+          setDriveToken(data.google_drive_token)
+        }
       }
     }
+
+    loadSavedToken()
   }, [])
 
+  // Connetti Google Drive tramite Google Identity Services
+  const connectDrive = useCallback(() => {
+    setConnecting(true)
+
+    const tokenClient = window.google.accounts.oauth2.initTokenClient({
+      client_id: CLIENT_ID,
+      scope: SCOPE,
+      callback: async (response: { access_token?: string; expires_in?: number; error?: string }) => {
+        setConnecting(false)
+
+        if (response.error || !response.access_token) {
+          alert('Errore connessione Google Drive: ' + (response.error || 'token non ricevuto'))
+          return
+        }
+
+        const token = response.access_token
+        const expiryMs = Date.now() + (response.expires_in || 3600) * 1000
+        const expiryIso = new Date(expiryMs).toISOString()
+
+        // Salva token in Supabase
+        const supabase = createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (user) {
+          await supabase.from('user_configs').upsert(
+            {
+              user_id: user.id,
+              google_drive_token: token,
+              google_drive_token_expiry: expiryIso,
+            },
+            { onConflict: 'user_id' }
+          )
+        }
+
+        setDriveToken(token)
+      },
+    })
+
+    tokenClient.requestAccessToken({ prompt: 'consent' })
+  }, [])
+
+  // Apri Picker con il token salvato
   const openPicker = useCallback(async () => {
-    if (!pickerReady) return
+    if (!pickerReady || !driveToken) return
     setPickerLoading(true)
 
     try {
-      // Recupera il token Google dalla sessione Supabase
-      const supabase = createClient()
-      const { data: { session } } = await supabase.auth.getSession()
-      const accessToken = session?.provider_token
-
-      if (!accessToken) {
-        alert('Token Google non disponibile. Prova a fare logout e login di nuovo con Google.')
-        return
-      }
-
       const view = new window.google.picker.DocsView()
       view.setIncludeFolders(true)
       view.setSelectFolderEnabled(true)
@@ -80,16 +141,11 @@ export default function DriveFolderPicker({ folders, onChange }: Props) {
 
       const picker = new window.google.picker.PickerBuilder()
         .addView(view)
-        .setOAuthToken(accessToken)
+        .setOAuthToken(driveToken)
         .setCallback((data: PickerResponse) => {
           if (data.action === window.google.picker.Action.PICKED && data.docs?.[0]) {
             const doc = data.docs[0]
-            const nuovaCartella: DriveFolder = {
-              folder_id: doc.id,
-              nome: doc.name,
-              contesto: '',
-            }
-            onChange([...folders, nuovaCartella])
+            onChange([...folders, { folder_id: doc.id, nome: doc.name, contesto: '' }])
             setEditingIdx(folders.length)
           }
         })
@@ -97,12 +153,11 @@ export default function DriveFolderPicker({ folders, onChange }: Props) {
 
       picker.setVisible(true)
     } catch (err) {
-      console.error('Errore apertura Picker:', err)
-      alert('Errore apertura Drive. Controlla la console.')
+      console.error('Errore Picker:', err)
     } finally {
       setPickerLoading(false)
     }
-  }, [pickerReady, folders, onChange])
+  }, [pickerReady, driveToken, folders, onChange])
 
   function updateContesto(idx: number, contesto: string) {
     onChange(folders.map((f, i) => i === idx ? { ...f, contesto } : f))
@@ -113,8 +168,61 @@ export default function DriveFolderPicker({ folders, onChange }: Props) {
     if (editingIdx === idx) setEditingIdx(null)
   }
 
+  async function disconnectDrive() {
+    setDriveToken(null)
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user) {
+      await supabase.from('user_configs').upsert(
+        { user_id: user.id, google_drive_token: null, google_drive_token_expiry: null },
+        { onConflict: 'user_id' }
+      )
+    }
+  }
+
   return (
     <div className="space-y-3">
+
+      {/* Stato connessione Drive */}
+      {!driveToken ? (
+        <div className="bg-white border border-gray-200 rounded-2xl p-4">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-9 h-9 rounded-xl bg-gray-100 flex items-center justify-center flex-shrink-0">
+              <svg width="20" height="18" viewBox="0 0 87.3 78" xmlns="http://www.w3.org/2000/svg">
+                <path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/>
+                <path d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44a9.06 9.06 0 0 0 -1.2 4.5h27.5z" fill="#00ac47"/>
+                <path d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.502l5.852 11.5z" fill="#ea4335"/>
+                <path d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z" fill="#00832d"/>
+                <path d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc"/>
+                <path d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 27h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00"/>
+              </svg>
+            </div>
+            <div>
+              <p className="text-sm font-medium text-gray-900">Google Drive non connesso</p>
+              <p className="text-xs text-gray-400">Autorizza l&apos;accesso per collegare le cartelle</p>
+            </div>
+          </div>
+          <button
+            onClick={connectDrive}
+            disabled={connecting}
+            className="w-full bg-gray-900 text-white rounded-xl py-3 text-sm font-medium disabled:opacity-40 transition-colors"
+          >
+            {connecting ? 'Connessione in corso...' : '🔗 Connetti Google Drive'}
+          </button>
+        </div>
+      ) : (
+        <div className="bg-green-50 border border-green-200 rounded-2xl p-3 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-green-600">✓</span>
+            <p className="text-sm font-medium text-green-800">Google Drive connesso</p>
+          </div>
+          <button onClick={disconnectDrive} className="text-xs text-green-600 hover:text-red-500 transition-colors">
+            Disconnetti
+          </button>
+        </div>
+      )}
+
+      {/* Lista cartelle collegate */}
       {folders.length > 0 && (
         <div className="space-y-2">
           {folders.map((folder, idx) => (
@@ -173,31 +281,34 @@ export default function DriveFolderPicker({ folders, onChange }: Props) {
         </div>
       )}
 
-      <button
-        onClick={openPicker}
-        disabled={!pickerReady || pickerLoading}
-        className="w-full flex items-center justify-center gap-2 border-2 border-dashed border-gray-200 rounded-2xl py-3.5 text-sm text-gray-500 hover:border-gray-400 hover:text-gray-700 disabled:opacity-40 transition-all"
-      >
-        {pickerLoading ? (
-          <span className="text-xs">Apertura Drive...</span>
-        ) : !pickerReady ? (
-          <span className="text-xs">Caricamento...</span>
-        ) : (
-          <>
-            <svg width="16" height="14" viewBox="0 0 87.3 78" xmlns="http://www.w3.org/2000/svg">
-              <path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/>
-              <path d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44a9.06 9.06 0 0 0 -1.2 4.5h27.5z" fill="#00ac47"/>
-              <path d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.502l5.852 11.5z" fill="#ea4335"/>
-              <path d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z" fill="#00832d"/>
-              <path d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc"/>
-              <path d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 27h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00"/>
-            </svg>
-            Collega cartella Google Drive
-          </>
-        )}
-      </button>
+      {/* Pulsante aggiungi cartella — solo se connesso */}
+      {driveToken && (
+        <button
+          onClick={openPicker}
+          disabled={!pickerReady || pickerLoading}
+          className="w-full flex items-center justify-center gap-2 border-2 border-dashed border-gray-200 rounded-2xl py-3.5 text-sm text-gray-500 hover:border-gray-400 hover:text-gray-700 disabled:opacity-40 transition-all"
+        >
+          {pickerLoading ? (
+            <span className="text-xs">Apertura Drive...</span>
+          ) : !pickerReady ? (
+            <span className="text-xs">Caricamento...</span>
+          ) : (
+            <>
+              <svg width="16" height="14" viewBox="0 0 87.3 78" xmlns="http://www.w3.org/2000/svg">
+                <path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/>
+                <path d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44a9.06 9.06 0 0 0 -1.2 4.5h27.5z" fill="#00ac47"/>
+                <path d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.502l5.852 11.5z" fill="#ea4335"/>
+                <path d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z" fill="#00832d"/>
+                <path d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc"/>
+                <path d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 27h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00"/>
+              </svg>
+              + Aggiungi cartella Drive
+            </>
+          )}
+        </button>
+      )}
 
-      {folders.length === 0 && pickerReady && (
+      {folders.length === 0 && driveToken && (
         <p className="text-xs text-gray-400 text-center">
           Collega cartelle Drive per usarle come fonte nelle tue chat
         </p>

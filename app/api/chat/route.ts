@@ -100,25 +100,22 @@ async function getGoogleAccessToken(
 ): Promise<string | null> {
   try {
     const { data } = await supabase
-      .from('user_oauth_tokens')
-      .select('access_token, expires_at')
+      .from('user_configs')
+      .select('google_drive_token, google_drive_token_expiry')
       .eq('user_id', userId)
-      .eq('provider', 'google')
       .single()
 
-    if (!data) return null
+    if (!data?.google_drive_token) return null
 
     // Controlla se il token è scaduto (con margine di 5 minuti)
-    if (data.expires_at) {
-      const expiresAt = new Date(data.expires_at).getTime()
+    if (data.google_drive_token_expiry) {
+      const expiresAt = new Date(data.google_drive_token_expiry).getTime()
       if (Date.now() > expiresAt - 5 * 60 * 1000) {
-        // Token scaduto — l'utente dovrà ricollegare Drive
-        // TODO: implementare refresh token
         return null
       }
     }
 
-    return data.access_token
+    return data.google_drive_token
   } catch {
     return null
   }
