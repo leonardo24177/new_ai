@@ -8,7 +8,6 @@ const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
 })
 
-// ─── Tipi Drive ──────────────────────────────────────────────
 interface DriveFolder {
   folder_id: string
   nome: string
@@ -27,12 +26,6 @@ interface DriveFileContent {
   testo: string
 }
 
-// ─── Helpers Drive ───────────────────────────────────────────
-
-/**
- * Cerca i file più recenti in una cartella Drive.
- * Usa l'access token Google dell'utente salvato in Supabase.
- */
 async function searchDriveFolder(
   folderId: string,
   accessToken: string,
@@ -54,11 +47,6 @@ async function searchDriveFolder(
   }
 }
 
-/**
- * Legge il testo di un file Google Docs o testo semplice.
- * Per Google Docs esporta come plain text.
- * Per altri tipi scarica il contenuto diretto.
- */
 async function readDriveFile(
   file: DriveFile,
   accessToken: string
@@ -74,7 +62,6 @@ async function readDriveFile(
     ) {
       url = `https://www.googleapis.com/drive/v3/files/${file.id}?alt=media`
     } else {
-      // Tipo non supportato per lettura testo (pdf, immagini, ecc.)
       return ''
     }
 
@@ -83,17 +70,12 @@ async function readDriveFile(
     })
     if (!res.ok) return ''
     const text = await res.text()
-    // Limita a 8000 caratteri per file per non gonfiare il contesto
     return text.slice(0, 8000)
   } catch {
     return ''
   }
 }
 
-/**
- * Recupera l'access token Google dell'utente da Supabase.
- * Il token viene salvato durante il flow OAuth di connessione Drive.
- */
 async function getGoogleAccessToken(
   supabase: Awaited<ReturnType<typeof createClient>>,
   userId: string
@@ -107,7 +89,6 @@ async function getGoogleAccessToken(
 
     if (!data?.google_drive_token) return null
 
-    // Controlla se il token è scaduto (con margine di 5 minuti)
     if (data.google_drive_token_expiry) {
       const expiresAt = new Date(data.google_drive_token_expiry).getTime()
       if (Date.now() > expiresAt - 5 * 60 * 1000) {
@@ -120,8 +101,6 @@ async function getGoogleAccessToken(
     return null
   }
 }
-
-// ─── Route principale ─────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
   try {
@@ -139,6 +118,7 @@ export async function POST(req: NextRequest) {
       file_contexts,
       active_skill_slugs,
       ambito_attivo,
+      google_access_token,
     } = await req.json()
 
     // 1. Recupera system prompt base
@@ -232,8 +212,6 @@ export async function POST(req: NextRequest) {
     }
 
     // ─── 7b. CARTELLE GOOGLE DRIVE ────────────────────────────
-    // Recupera tutte le cartelle Drive collegate dall'utente
-    // (salvate in user_configs.drive_folders — indipendenti dagli ambiti)
     const { data: userConfig } = await supabase
       .from('user_configs')
       .select('drive_folders')
@@ -242,17 +220,20 @@ export async function POST(req: NextRequest) {
 
     const driveFolders: DriveFolder[] = userConfig?.drive_folders || []
 
+    console.log('[Drive] drive_folders:', driveFolders)
+    console.log('[Drive] google_access_token dal client:', google_access_token ? 'presente' : 'assente')
+
     if (driveFolders.length > 0) {
-      const accessToken = await getGoogleAccessToken(supabase, user.id)
+      // Usa prima il token dal client (fresco), poi quello salvato in Supabase
+      const accessToken = (google_access_token as string | null) || await getGoogleAccessToken(supabase, user.id)
+
+      console.log('[Drive] accessToken finale:', accessToken ? 'presente' : 'assente')
 
       if (accessToken) {
-        const lastUserMessage = messages[messages.length - 1]?.content || ''
-
         for (const folder of driveFolders) {
-          // Cerca nella cartella se il messaggio è potenzialmente pertinente al suo contesto
-          // Logica semplice: cerca sempre (max 3 file per cartella) e lascia all'AI decidere la pertinenza
-          // In futuro si può migliorare con embedding per filtrare prima
           const files = await searchDriveFolder(folder.folder_id, accessToken, 3)
+
+          console.log(`[Drive] Cartella "${folder.nome}": ${files.length} file trovati`)
 
           if (files.length === 0) continue
 
@@ -271,20 +252,16 @@ export async function POST(req: NextRequest) {
               .join('\n')
             fileTexts.push(`${header}${body}`)
           } else {
-            // Nessun contenuto leggibile, includi solo i nomi dei file
             const fileNames = files.map(f => `  • ${f.name}`).join('\n')
             fileTexts.push(
               `[Cartella Google Drive: "${folder.nome}" — ${folder.contesto}]\nFile disponibili (contenuto non leggibile):\n${fileNames}`
             )
           }
 
-          // Log per debug
-          console.log(`[Drive] Cartella "${folder.nome}": ${files.length} file trovati, ${driveContents.length} letti`)
+          console.log(`[Drive] Cartella "${folder.nome}": ${driveContents.length} file letti`)
         }
-      } else if (driveFolders.length > 0) {
-        // Token non disponibile: avvisa nel system prompt
+      } else {
         console.warn('[Drive] Access token Google non disponibile per user:', user.id)
-        // Non bloccare la chat, semplicemente non inietta contenuto Drive
       }
     }
     // ─── fine Drive ───────────────────────────────────────────
