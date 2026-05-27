@@ -1,25 +1,5 @@
 'use client'
 
-/**
- * DriveFolderPicker.tsx
- *
- * Componente riutilizzabile per collegare cartelle Google Drive con contesto.
- * Usa Google Picker API per scegliere la cartella.
- *
- * Props:
- *  - folders: DriveFolder[]          — stato corrente
- *  - onChange: (f: DriveFolder[]) => void — callback aggiornamento
- *
- * Ambiente richiesto:
- *  - NEXT_PUBLIC_GOOGLE_CLIENT_ID in .env.local
- *  - Google Drive API + Google Picker API abilitati in Google Cloud Console
- *
- * Funzionamento OAuth:
- *  - Usa gapi (Google API client) per il token
- *  - Poi apre il Picker per scegliere la cartella
- *  - Salva folder_id, nome e contesto nello stato padre
- */
-
 import { useState, useEffect, useCallback } from 'react'
 
 export interface DriveFolder {
@@ -33,38 +13,18 @@ interface Props {
   onChange: (folders: DriveFolder[]) => void
 }
 
-declare global {
-  interface Window {
-    gapi: {
-      load: (api: string, cb: () => void) => void
-      auth2?: {
-        getAuthInstance: () => {
-          signIn: () => Promise<{ getAuthResponse: () => { access_token: string } }>
-        }
-      }
-      client?: {
-        init: (config: object) => Promise<void>
-      }
-    }
-    google: {
-      picker: {
-        PickerBuilder: new () => {
-          addView: (v: unknown) => unknown
-          setOAuthToken: (t: string) => unknown
-          setDeveloperKey: (k: string) => unknown
-          setCallback: (cb: (data: PickerResponse) => void) => unknown
-          build: () => { setVisible: (v: boolean) => void }
-        }
-        DocsView: new () => { setIncludeFolders: (v: boolean) => unknown; setSelectFolderEnabled: (v: boolean) => unknown; setMimeTypes: (m: string) => unknown }
-        Action: { PICKED: string }
-      }
-    }
-  }
-}
-
 interface PickerResponse {
   action: string
   docs?: Array<{ id: string; name: string }>
+}
+
+declare global {
+  interface Window {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    gapi: any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    google: any
+  }
 }
 
 const CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID!
@@ -73,10 +33,8 @@ const SCOPE = 'https://www.googleapis.com/auth/drive.readonly'
 export default function DriveFolderPicker({ folders, onChange }: Props) {
   const [gapiReady, setGapiReady] = useState(false)
   const [pickerLoading, setPickerLoading] = useState(false)
-  // Tiene traccia dell'indice della cartella in modifica del contesto
   const [editingIdx, setEditingIdx] = useState<number | null>(null)
 
-  // Carica gli script Google una sola volta
   useEffect(() => {
     function loadGapi() {
       const script = document.createElement('script')
@@ -85,10 +43,7 @@ export default function DriveFolderPicker({ folders, onChange }: Props) {
         window.gapi.load('auth2:picker', () => {
           window.gapi.client?.init({ clientId: CLIENT_ID, scope: SCOPE })
             .then(() => setGapiReady(true))
-            .catch(() => {
-              // init può fallire se auth2 non è ancora pronto, ma il picker funziona lo stesso
-              setGapiReady(true)
-            })
+            .catch(() => setGapiReady(true))
         })
       }
       document.body.appendChild(script)
@@ -106,14 +61,12 @@ export default function DriveFolderPicker({ folders, onChange }: Props) {
     setPickerLoading(true)
 
     try {
-      // Ottieni access token tramite OAuth popup
       const authInstance = window.gapi.auth2?.getAuthInstance()
       const user = await authInstance?.signIn()
       const accessToken = user?.getAuthResponse().access_token
 
       if (!accessToken) throw new Error('Token non ottenuto')
 
-      // Costruisce il Picker per selezionare SOLO cartelle
       const view = new window.google.picker.DocsView()
       view.setIncludeFolders(true)
       view.setSelectFolderEnabled(true)
@@ -131,7 +84,6 @@ export default function DriveFolderPicker({ folders, onChange }: Props) {
               contesto: '',
             }
             onChange([...folders, nuovaCartella])
-            // Apre automaticamente l'editor del contesto per la nuova cartella
             setEditingIdx(folders.length)
           }
         })
@@ -146,8 +98,7 @@ export default function DriveFolderPicker({ folders, onChange }: Props) {
   }, [gapiReady, folders, onChange])
 
   function updateContesto(idx: number, contesto: string) {
-    const updated = folders.map((f, i) => i === idx ? { ...f, contesto } : f)
-    onChange(updated)
+    onChange(folders.map((f, i) => i === idx ? { ...f, contesto } : f))
   }
 
   function removeFolder(idx: number) {
@@ -157,15 +108,12 @@ export default function DriveFolderPicker({ folders, onChange }: Props) {
 
   return (
     <div className="space-y-3">
-
-      {/* Lista cartelle collegate */}
       {folders.length > 0 && (
         <div className="space-y-2">
           {folders.map((folder, idx) => (
             <div key={folder.folder_id} className="bg-white border border-gray-200 rounded-2xl p-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-2 flex-1 min-w-0">
-                  {/* Icona Drive */}
                   <span className="text-xl flex-shrink-0">
                     <svg width="20" height="18" viewBox="0 0 87.3 78" xmlns="http://www.w3.org/2000/svg">
                       <path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/>
@@ -189,21 +137,18 @@ export default function DriveFolderPicker({ folders, onChange }: Props) {
                   <button
                     onClick={() => setEditingIdx(editingIdx === idx ? null : idx)}
                     className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg transition-colors"
-                    title="Modifica contesto"
                   >
                     ✏️
                   </button>
                   <button
                     onClick={() => removeFolder(idx)}
                     className="p-1.5 text-gray-300 hover:text-red-400 rounded-lg transition-colors"
-                    title="Rimuovi cartella"
                   >
                     ✕
                   </button>
                 </div>
               </div>
 
-              {/* Editor contesto inline */}
               {editingIdx === idx && (
                 <div className="mt-3 pt-3 border-t border-gray-100">
                   <label className="text-xs font-medium text-gray-500 mb-1.5 block">
@@ -225,7 +170,6 @@ export default function DriveFolderPicker({ folders, onChange }: Props) {
         </div>
       )}
 
-      {/* Pulsante aggiungi cartella */}
       <button
         onClick={openPicker}
         disabled={!gapiReady || pickerLoading}
