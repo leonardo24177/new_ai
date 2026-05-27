@@ -123,7 +123,7 @@ function FileTreeNode({ node, depth, onDelete }: FileTreeNodeProps) {
         </div>
         <button
           onClick={() => onDelete(f.id, f.storage_path)}
-          className="text-gray-200 group-hover:text-gray-400 active:text-red-500 transition-colors p-1 flex-shrink-0"
+          className="text-gray-400 active:text-red-500 transition-colors p-1 flex-shrink-0"
         >
           🗑
         </button>
