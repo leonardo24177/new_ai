@@ -40,6 +40,13 @@ interface UserFile {
   ambito: string | null
 }
 
+// File/cartelle da ignorare nell'upload cartella
+const IGNORA = ['node_modules', '.git', '.next', 'dist', 'build', '.cache', '__pycache__', '.DS_Store', 'Thumbs.db']
+
+function deveIgnorare(path: string): boolean {
+  return IGNORA.some(p => path.includes(`/${p}`) || path.includes(`\\${p}`) || path.startsWith(p))
+}
+
 const PROFESSIONI_PER_CATEGORIA = PROFESSIONI_LIST.reduce((acc, p) => {
   if (!acc[p.categoria]) acc[p.categoria] = []
   acc[p.categoria].push(p)
@@ -77,6 +84,7 @@ function getFileIcon(mime: string) {
   if (mime.includes('sheet')) return '📊'
   if (mime.includes('presentation')) return '📑'
   if (mime.startsWith('image/')) return '🖼️'
+  if (mime.startsWith('text/') || mime === 'application/json') return '📝'
   return '📎'
 }
 
@@ -99,11 +107,19 @@ function normalizeAmbitoData(raw: Record<string, unknown>): AmbitoData {
   }
 }
 
+interface FolderProgress {
+  totale: number
+  completati: number
+  corrente: string
+  errori: number
+}
+
 export default function ProfilePage() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [folderProgress, setFolderProgress] = useState<FolderProgress | null>(null)
   const [activeTab, setActiveTab] = useState<'ambiti' | 'file' | 'drive' | 'prompt'>('ambiti')
   const [activeAmbito, setActiveAmbito] = useState<Ambito | null>(null)
   const [nomeUtente, setNomeUtente] = useState('')
@@ -115,6 +131,7 @@ export default function ProfilePage() {
   const [activeFileAmbito, setActiveFileAmbito] = useState<string>('tutti')
   const [driveFolders, setDriveFolders] = useState<DriveFolder[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const folderInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => { loadProfile() }, [])
 
@@ -258,6 +275,63 @@ export default function ProfilePage() {
     }
   }
 
+  // ── Upload cartella locale ──────────────────────────────────
+  async function handleFolderUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files || [])
+    if (files.length === 0) return
+
+    const fileDaCaricare = files.filter(f => {
+      const path = (f as File & { webkitRelativePath?: string }).webkitRelativePath || f.name
+      return !deveIgnorare(path)
+    })
+
+    if (fileDaCaricare.length === 0) return
+
+    setFolderProgress({ totale: fileDaCaricare.length, completati: 0, corrente: '', errori: 0 })
+    let errori = 0
+    const nuoviFile: UserFile[] = []
+
+    for (let i = 0; i < fileDaCaricare.length; i++) {
+      const file = fileDaCaricare[i]
+      const relativePath = (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name
+
+      setFolderProgress(prev => prev ? { ...prev, completati: i, corrente: relativePath } : null)
+
+      try {
+        const formData = new FormData()
+        const fileConPercorso = new File([file], relativePath.replace(/\\/g, '/'), { type: file.type })
+        formData.append('file', fileConPercorso)
+        formData.append('tipo_contesto', 'profile')
+        if (activeFileAmbito && activeFileAmbito !== 'tutti') {
+          formData.append('ambito', activeFileAmbito)
+        }
+
+        const res = await fetch('/api/upload', { method: 'POST', body: formData })
+        const data = await res.json()
+
+        if (data.error) {
+          errori++
+        } else {
+          nuoviFile.push({
+            id: data.id, nome: data.nome, mime_type: data.mime_type,
+            dimensione: data.dimensione, created_at: new Date().toISOString(),
+            storage_path: data.storage_path, ambito: data.ambito || null,
+          })
+        }
+      } catch {
+        errori++
+      }
+    }
+
+    setProfileFiles(prev => [...nuoviFile.reverse(), ...prev])
+    setFolderProgress({ totale: fileDaCaricare.length, completati: fileDaCaricare.length, corrente: '', errori })
+    setSuccessMsg(`Cartella caricata! ${fileDaCaricare.length - errori} file, ${errori} errori`)
+    setTimeout(() => { setSuccessMsg(''); setFolderProgress(null) }, 4000)
+
+    if (folderInputRef.current) folderInputRef.current.value = ''
+  }
+  // ─────────────────────────────────────────────────────────────
+
   async function deleteFile(fileId: string, storagePath: string) {
     const supabase = createClient()
     await supabase.storage.from('user-files').remove([storagePath])
@@ -313,7 +387,7 @@ export default function ProfilePage() {
 
       <div className="max-w-2xl mx-auto px-4 py-4">
 
-        {/* Tab — ora con Drive */}
+        {/* Tab */}
         <div className="flex gap-1 bg-gray-100 rounded-xl p-1 mb-5 overflow-x-auto"
           style={{ msOverflowStyle: 'none', scrollbarWidth: 'none' }}>
           {[
@@ -353,8 +427,6 @@ export default function ProfilePage() {
 
             {currentAmbito && (
               <div className="space-y-4">
-
-                {/* ── LAVORO ── */}
                 {currentAmbito.ambito === 'lavoro' && (
                   <>
                     <div className="bg-white rounded-2xl border border-gray-200 p-4">
@@ -501,7 +573,6 @@ export default function ProfilePage() {
                   </>
                 )}
 
-                {/* ── STUDIO ── */}
                 {currentAmbito.ambito === 'studio' && (
                   <div className="bg-white rounded-2xl border border-gray-200 p-4">
                     <h3 className="text-sm font-semibold text-gray-900 mb-3">Livello scolastico</h3>
@@ -520,7 +591,6 @@ export default function ProfilePage() {
                   </div>
                 )}
 
-                {/* ── PERSONALE ── */}
                 {currentAmbito.ambito === 'personale' && (
                   <div className="bg-white rounded-2xl border border-gray-200 p-4">
                     <h3 className="text-sm font-semibold text-gray-900 mb-3">Uso principale</h3>
@@ -539,7 +609,6 @@ export default function ProfilePage() {
                   </div>
                 )}
 
-                {/* Tono */}
                 <div className="bg-white rounded-2xl border border-gray-200 p-4">
                   <h3 className="text-sm font-semibold text-gray-900 mb-3">Tono</h3>
                   <div className="space-y-2">
@@ -556,7 +625,6 @@ export default function ProfilePage() {
                   </div>
                 </div>
 
-                {/* Bottoni azione */}
                 <div className="flex gap-3 pb-4">
                   <button onClick={() => saveAmbito(currentAmbito.ambito)} disabled={saving}
                     className="flex-1 bg-gray-900 text-white rounded-xl py-3.5 text-sm font-medium active:bg-gray-800 disabled:opacity-40 transition-colors">
@@ -601,20 +669,59 @@ export default function ProfilePage() {
                   {activeFileAmbito === 'tutti' ? 'Tutti i file permanenti' : `File — ${AMBITI_CONFIG.find(a => a.value === activeFileAmbito)?.label || activeFileAmbito}`}
                 </h2>
                 <p className="text-xs text-gray-400 mt-0.5">
-                  {activeFileAmbito === 'tutti'
-                    ? 'Tutti i file caricati permanentemente'
-                    : `Disponibili nelle chat ${AMBITI_CONFIG.find(a => a.value === activeFileAmbito)?.label?.toLowerCase() || ''}`}
+                  {activeFileAmbito === 'tutti' ? 'Tutti i file caricati permanentemente' : `Disponibili nelle chat ${AMBITI_CONFIG.find(a => a.value === activeFileAmbito)?.label?.toLowerCase() || ''}`}
                 </p>
               </div>
-              <button onClick={() => fileInputRef.current?.click()} disabled={uploading}
-                className="flex items-center gap-2 bg-gray-900 text-white px-4 py-2.5 rounded-xl text-sm font-medium active:bg-gray-800 disabled:opacity-40 transition-colors">
-                {uploading ? '...' : '+ Aggiungi'}
-              </button>
+              {/* Bottoni upload */}
+              <div className="flex gap-2">
+                <button onClick={() => folderInputRef.current?.click()} disabled={!!folderProgress}
+                  className="flex items-center gap-1.5 border border-gray-200 text-gray-600 px-3 py-2.5 rounded-xl text-sm font-medium active:bg-gray-50 disabled:opacity-40 transition-colors">
+                  📁
+                </button>
+                <button onClick={() => fileInputRef.current?.click()} disabled={uploading}
+                  className="flex items-center gap-2 bg-gray-900 text-white px-4 py-2.5 rounded-xl text-sm font-medium active:bg-gray-800 disabled:opacity-40 transition-colors">
+                  {uploading ? '...' : '+ File'}
+                </button>
+              </div>
             </div>
 
+            {/* Progress upload cartella */}
+            {folderProgress && (
+              <div className="bg-blue-50 border border-blue-100 rounded-2xl p-3 mb-4">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs font-medium text-blue-800">
+                    Caricamento cartella... {folderProgress.completati}/{folderProgress.totale}
+                  </p>
+                  {folderProgress.errori > 0 && (
+                    <p className="text-xs text-amber-600">{folderProgress.errori} saltati</p>
+                  )}
+                </div>
+                <div className="w-full bg-blue-200 rounded-full h-1.5">
+                  <div
+                    className="bg-blue-600 h-1.5 rounded-full transition-all duration-300"
+                    style={{ width: `${(folderProgress.completati / folderProgress.totale) * 100}%` }}
+                  />
+                </div>
+                {folderProgress.corrente && (
+                  <p className="text-xs text-blue-500 mt-1.5 truncate">{folderProgress.corrente}</p>
+                )}
+              </div>
+            )}
+
             <input ref={fileInputRef} type="file"
-              accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.jpg,.jpeg,.png,.webp"
+              accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.jpg,.jpeg,.png,.webp,.ts,.tsx,.js,.jsx,.py,.json,.md,.csv,.html,.css,.yaml,.yml"
               onChange={handleFileUpload} className="hidden" />
+
+            {/* Input cartella — webkitdirectory */}
+            <input
+              ref={folderInputRef}
+              type="file"
+              // @ts-expect-error webkitdirectory non è nel tipo standard
+              webkitdirectory=""
+              multiple
+              onChange={handleFolderUpload}
+              className="hidden"
+            />
 
             {(() => {
               const filtered = activeFileAmbito === 'tutti'
@@ -623,11 +730,7 @@ export default function ProfilePage() {
               return filtered.length === 0 ? (
                 <div className="bg-white rounded-2xl border border-gray-200 p-8 text-center">
                   <p className="text-gray-400 text-sm">Nessun file caricato</p>
-                  <p className="text-gray-300 text-xs mt-1">
-                    {activeFileAmbito === 'tutti'
-                      ? 'Carica file per renderli disponibili nelle chat'
-                      : `Carica file specifici per l'ambito ${AMBITI_CONFIG.find(a => a.value === activeFileAmbito)?.label?.toLowerCase() || ''}`}
-                  </p>
+                  <p className="text-gray-300 text-xs mt-1">Carica file singoli o un&apos;intera cartella</p>
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -663,30 +766,18 @@ export default function ProfilePage() {
           <div>
             <div className="mb-4">
               <h2 className="text-sm font-semibold text-gray-900">Cartelle Google Drive</h2>
-              <p className="text-xs text-gray-400 mt-0.5">
-                L&apos;AI le consulta automaticamente in tutte le chat
-              </p>
+              <p className="text-xs text-gray-400 mt-0.5">L&apos;AI le consulta automaticamente in tutte le chat</p>
             </div>
-
-            {/* Banner informativo */}
             <div className="bg-blue-50 border border-blue-100 rounded-2xl p-3 mb-4 flex gap-2">
               <span className="text-base flex-shrink-0">💡</span>
               <p className="text-xs text-blue-700 leading-relaxed">
-                Le cartelle Drive non sono legate a nessun ambito specifico — puoi collegare ricette, documenti personali, materiale di studio e altro. Aggiungi sempre un contesto chiaro così l&apos;AI sa quando consultarle.
+                Le cartelle Drive non sono legate a nessun ambito specifico. Aggiungi sempre un contesto chiaro così l&apos;AI sa quando consultarle.
               </p>
             </div>
-
-            <DriveFolderPicker
-              folders={driveFolders}
-              onChange={setDriveFolders}
-            />
-
+            <DriveFolderPicker folders={driveFolders} onChange={setDriveFolders} />
             {driveFolders.length > 0 && (
-              <button
-                onClick={saveDriveFolders}
-                disabled={saving}
-                className="mt-4 w-full bg-gray-900 text-white rounded-xl py-3.5 text-sm font-medium active:bg-gray-800 disabled:opacity-40 transition-colors"
-              >
+              <button onClick={saveDriveFolders} disabled={saving}
+                className="mt-4 w-full bg-gray-900 text-white rounded-xl py-3.5 text-sm font-medium active:bg-gray-800 disabled:opacity-40 transition-colors">
                 {saving ? 'Salvo...' : 'Salva cartelle Drive'}
               </button>
             )}
