@@ -188,7 +188,6 @@ export default function ChatPage() {
   useEffect(() => { initChat() }, [])
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
 
-  // Fix iOS zoom su focus
   useEffect(() => {
     const meta = document.querySelector('meta[name=viewport]')
     if (meta) meta.setAttribute('content', 'width=device-width, initial-scale=1, maximum-scale=1')
@@ -325,9 +324,21 @@ export default function ChatPage() {
       })
     }
     try {
+      // ── Recupera il token Google dalla sessione Supabase ──
+      const supabase = createClient()
+      const { data: { session } } = await supabase.auth.getSession()
+      const googleToken = session?.provider_token || null
+
       const res = await fetch('/api/chat', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: newMessages, conversation_id: conversationId, file_contexts: sentFiles, active_skill_slugs: activeSkills, ambito_attivo: ambitoAttivo }),
+        body: JSON.stringify({
+          messages: newMessages,
+          conversation_id: conversationId,
+          file_contexts: sentFiles,
+          active_skill_slugs: activeSkills,
+          ambito_attivo: ambitoAttivo,
+          google_access_token: googleToken,  // ← token Google per lettura Drive
+        }),
       })
       if (!res.ok || !res.body) throw new Error('Errore risposta')
       const reader = res.body.getReader()
@@ -419,7 +430,6 @@ export default function ChatPage() {
   }
 
   return (
-    // ✅ h-[100dvh] invece di h-screen — rispetta la barra del browser su mobile
     <div className={`flex h-[100dvh] overflow-hidden transition-colors duration-300 ${theme.bg}`}>
 
       {/* Dialog scelta file */}
@@ -521,12 +531,11 @@ export default function ChatPage() {
       {/* Main chat */}
       <div className="flex flex-col flex-1 min-w-0 min-h-0">
 
-        {/* Header — compatto su mobile */}
+        {/* Header */}
         <div
           className={`${theme.header} ${theme.headerBorder} border-b px-3 flex items-center justify-between transition-colors duration-300 flex-shrink-0`}
           style={{ paddingTop: 'max(10px, env(safe-area-inset-top))', paddingBottom: '10px' }}
         >
-          {/* Sinistra: hamburger + avatar + nome */}
           <div className="flex items-center gap-2 min-w-0">
             <button onClick={() => { setSidebarOpen(true); loadConversations() }}
               className={`w-8 h-8 flex items-center justify-center ${theme.headerText} opacity-70 active:opacity-100 flex-shrink-0`}>
@@ -543,9 +552,7 @@ export default function ChatPage() {
             </div>
           </div>
 
-          {/* Destra: ambito + azioni essenziali */}
           <div className="flex items-center gap-1.5 flex-shrink-0">
-            {/* Selettore ambito */}
             {ambitiDisponibili.length > 1 ? (
               <button onClick={() => setShowAmbitoMenu(true)}
                 className={`flex items-center gap-1 px-2 py-1.5 rounded-full text-xs font-medium bg-white/15 active:bg-white/25 ${theme.headerText}`}>
@@ -560,13 +567,10 @@ export default function ChatPage() {
               </span>
             ) : null}
 
-            {/* Nuova chat */}
             <button onClick={newConversation}
               className={`w-8 h-8 flex items-center justify-center rounded-full bg-white/10 active:bg-white/20 ${theme.headerText} opacity-70 active:opacity-100`}>
               ✏️
             </button>
-
-            {/* Profilo — solo desktop, su mobile è nella sidebar */}
             <button onClick={() => router.push('/profile')}
               className={`hidden sm:flex w-8 h-8 items-center justify-center rounded-full bg-white/10 hover:bg-white/20 ${theme.headerText} opacity-70 hover:opacity-100`}>
               👤
@@ -638,7 +642,6 @@ export default function ChatPage() {
         <div className={`border-t ${theme.headerBorder} px-3 py-2 bg-white flex-shrink-0`}
           style={{ paddingBottom: 'max(8px, env(safe-area-inset-bottom))' }}>
           <div className={`flex items-end gap-1.5 ${theme.inputBg} border ${isRecording ? 'border-red-400' : theme.inputBorder} rounded-2xl px-2.5 py-2 transition-colors`}>
-            {/* Allega file */}
             <button onClick={() => fileInputRef.current?.click()} disabled={uploading}
               className="w-8 h-8 flex items-center justify-center text-gray-400 active:text-gray-600 disabled:opacity-40 flex-shrink-0">
               {uploading ? (
@@ -654,7 +657,6 @@ export default function ChatPage() {
             </button>
             <input ref={fileInputRef} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.jpg,.jpeg,.png,.webp" onChange={handleFileUpload} className="hidden" />
 
-            {/* Textarea */}
             <textarea ref={textareaRef} value={input} onChange={handleTextareaChange} onKeyDown={handleKeyDown}
               placeholder={isRecording ? '🎙️ Sto ascoltando...' : `Scrivi${ambitoAttivo ? ` — ${ambitoConfig?.label}` : ''}...`}
               rows={1}
@@ -662,7 +664,6 @@ export default function ChatPage() {
               style={{ maxHeight: '100px' }}
             />
 
-            {/* Microfono */}
             <button
               onPointerDown={startRecording} onPointerUp={stopRecording} onPointerLeave={stopRecording}
               className={`w-8 h-8 flex items-center justify-center rounded-xl transition-colors flex-shrink-0 select-none ${
@@ -675,7 +676,6 @@ export default function ChatPage() {
               </svg>
             </button>
 
-            {/* TTS */}
             <button
               onClick={() => { if (isSpeaking) stopSpeaking(); else setTtsEnabled(p => !p) }}
               className={`w-8 h-8 flex items-center justify-center rounded-xl transition-colors flex-shrink-0 ${
@@ -694,7 +694,6 @@ export default function ChatPage() {
               </svg>
             </button>
 
-            {/* Invia */}
             <button onClick={sendMessage} disabled={!input.trim() || loading}
               className={`w-9 h-9 ${theme.sendBtn} rounded-xl flex items-center justify-center disabled:opacity-40 transition-colors flex-shrink-0`}>
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none">

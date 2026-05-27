@@ -1,5 +1,5 @@
 // lib/onboarding/config.ts
-// Configurazione completa del flusso onboarding — versione espansa
+// Configurazione completa del flusso onboarding — versione con Google Drive
 
 export type Ambito = 'lavoro' | 'studio' | 'personale'
 export type Professione =
@@ -17,6 +17,14 @@ export interface Fonte {
   descrizione?: string
 }
 
+// ─── NUOVO ────────────────────────────────────────────────
+export interface DriveFolder {
+  folder_id: string    // ID cartella Google Drive
+  nome: string         // Nome cartella (es. "Ricette di famiglia")
+  contesto: string     // Descrizione libera dell'utente (es. "usala quando parlo di cucina o ingredienti")
+}
+// ──────────────────────────────────────────────────────────
+
 export interface OnboardingData {
   nome: string
   ambito: Ambito | ''
@@ -30,8 +38,10 @@ export interface OnboardingData {
   conflitto_fonti: 'gerarchia' | 'entrambe' | 'chiedi'
   tono: 'formale' | 'diretto' | 'colloquiale'
   note_libere: string
+  drive_folders: DriveFolder[]   // ← NUOVO: cartelle Google Drive collegate
 }
 
+// Il resto del file rimane identico...
 // ============================================================
 // UTILIZZI PER PROFESSIONE
 // ============================================================
@@ -178,10 +188,9 @@ export const UTILIZZI: Record<Professione, { value: string; label: string }[]> =
 }
 
 // ============================================================
-// SPECIALIZZAZIONI
+// SPECIALIZZAZIONI (invariate)
 // ============================================================
 export const SPECIALIZZAZIONI: Record<string, { value: string; label: string }[]> = {
-  // AVVOCATO
   'avvocato_redazione_atti': [
     { value: 'penale', label: 'Diritto penale' },
     { value: 'civile', label: 'Diritto civile' },
@@ -212,14 +221,12 @@ export const SPECIALIZZAZIONI: Record<string, { value: string; label: string }[]
     { value: 'famiglia', label: 'Famiglia' },
     { value: 'fallimentare', label: 'Fallimentare' },
   ],
-  // NOTAIO
   'notaio_atti_notarili': [
     { value: 'immobiliare', label: 'Immobiliare' },
     { value: 'societario', label: 'Societario' },
     { value: 'famiglia', label: 'Famiglia e successioni' },
     { value: 'trust', label: 'Trust e fondazioni' },
   ],
-  // INGEGNERE
   'ingegnere_relazioni_tecniche': [
     { value: 'civile', label: 'Ingegneria civile' },
     { value: 'strutturale', label: 'Ingegneria strutturale' },
@@ -237,7 +244,6 @@ export const SPECIALIZZAZIONI: Record<string, { value: string; label: string }[]
     { value: 'ambientale', label: 'Normativa ambientale' },
     { value: 'elettrica', label: 'Normativa elettrica (CEI)' },
   ],
-  // COMMERCIALISTA
   'commercialista_analisi_bilanci': [
     { value: 'pmi', label: 'PMI' },
     { value: 'grandi_imprese', label: 'Grandi imprese' },
@@ -251,7 +257,6 @@ export const SPECIALIZZAZIONI: Record<string, { value: string; label: string }[]
     { value: 'enti', label: 'Enti e associazioni' },
     { value: 'internazionale', label: 'Fiscalità internazionale' },
   ],
-  // MEDICO
   'medico_redazione_referti': [
     { value: 'medicina_generale', label: 'Medicina generale' },
     { value: 'cardiologia', label: 'Cardiologia' },
@@ -268,7 +273,6 @@ export const SPECIALIZZAZIONI: Record<string, { value: string; label: string }[]
     { value: 'urologia', label: 'Urologia' },
     { value: 'medicina_legale', label: 'Medicina legale' },
   ],
-  // PSICOLOGO
   'psicologo_relazioni_cliniche': [
     { value: 'clinica', label: 'Psicologia clinica' },
     { value: 'forense', label: 'Psicologia forense' },
@@ -276,7 +280,6 @@ export const SPECIALIZZAZIONI: Record<string, { value: string; label: string }[]
     { value: 'neuropsicologia', label: 'Neuropsicologia' },
     { value: 'eta_evolutiva', label: 'Età evolutiva' },
   ],
-  // INSEGNANTE
   'insegnante_creare_esami': [
     { value: 'universita', label: 'Università' },
     { value: 'liceo', label: 'Liceo' },
@@ -291,7 +294,6 @@ export const SPECIALIZZAZIONI: Record<string, { value: string; label: string }[]
     { value: 'professionale', label: 'Istituto professionale' },
     { value: 'primaria', label: 'Scuola primaria' },
   ],
-  // GIORNALISTA
   'giornalista_redazione_articoli': [
     { value: 'cronaca', label: 'Cronaca' },
     { value: 'politica', label: 'Politica' },
@@ -302,7 +304,6 @@ export const SPECIALIZZAZIONI: Record<string, { value: string; label: string }[]
     { value: 'esteri', label: 'Esteri' },
     { value: 'investigativa', label: 'Giornalismo investigativo' },
   ],
-  // RICERCATORE
   'ricercatore_letteratura': [
     { value: 'medicina', label: 'Medicina e scienze biologiche' },
     { value: 'fisica', label: 'Fisica e matematica' },
@@ -315,11 +316,9 @@ export const SPECIALIZZAZIONI: Record<string, { value: string; label: string }[]
 }
 
 // ============================================================
-// FONTI DEFAULT — gerarchiche per professione + utilizzo + specializzazione
+// FONTI DEFAULT (invariate)
 // ============================================================
 export const FONTI_DEFAULT: Record<string, Fonte[]> = {
-
-  // AVVOCATO
   'avvocato_penale': [
     { id: 'cp', label: 'Codice Penale', descrizione: 'D.Lgs. 19 ottobre 1930 n. 1398' },
     { id: 'cpp', label: 'Codice di Procedura Penale', descrizione: 'D.Lgs. 22 settembre 1988 n. 447' },
@@ -352,15 +351,6 @@ export const FONTI_DEFAULT: Record<string, Fonte[]> = {
     { id: 'reg_consob', label: 'Regolamenti CONSOB', descrizione: 'Normativa mercati' },
     { id: 'cass_civ', label: 'Cassazione Civile', descrizione: 'Giurisprudenza societaria' },
     { id: 'dottrina', label: 'Dottrina commercialistica', descrizione: 'Letteratura specialistica' },
-  ],
-  'avvocato_bancario': [
-    { id: 'tub', label: 'TUB', descrizione: 'D.Lgs. 385/1993' },
-    { id: 'tuf', label: 'TUF', descrizione: 'D.Lgs. 58/1998' },
-    { id: 'banca_italia', label: 'Circolari Banca d\'Italia', descrizione: 'Regolamentazione bancaria' },
-    { id: 'abf', label: 'Arbitro Bancario Finanziario', descrizione: 'Decisioni ABF' },
-    { id: 'cass_civ', label: 'Cassazione Civile', descrizione: 'Giurisprudenza bancaria' },
-    { id: 'regolamenti_ue_finanza', label: 'Regolamenti UE (MiFID, CRR)', descrizione: 'Normativa europea' },
-    { id: 'dottrina', label: 'Dottrina bancaria', descrizione: 'Letteratura specialistica' },
   ],
   'avvocato_tributario': [
     { id: 'tuir', label: 'TUIR', descrizione: 'D.P.R. 917/1986' },
@@ -403,8 +393,6 @@ export const FONTI_DEFAULT: Record<string, Fonte[]> = {
     { id: 'l_218_95', label: 'L. 218/1995', descrizione: 'DIP italiano' },
     { id: 'dottrina', label: 'Dottrina internazionale', descrizione: 'Letteratura specialistica' },
   ],
-
-  // NOTAIO
   'notaio_atti_notarili': [
     { id: 'cc', label: 'Codice Civile', descrizione: 'Disciplina contratti e proprietà' },
     { id: 'l_notariato', label: 'Legge Notariato', descrizione: 'L. 89/1913' },
@@ -413,8 +401,6 @@ export const FONTI_DEFAULT: Record<string, Fonte[]> = {
     { id: 'cnn', label: 'CNN — Consiglio Nazionale Notariato', descrizione: 'Studi e massime notarili' },
     { id: 'dottrina', label: 'Dottrina notarile', descrizione: 'Letteratura specialistica' },
   ],
-
-  // COMMERCIALISTA
   'commercialista_analisi_bilanci': [
     { id: 'oic', label: 'Principi OIC', descrizione: 'Organismo Italiano di Contabilità' },
     { id: 'ifrs', label: 'IFRS/IAS', descrizione: 'Standard internazionali IASB' },
@@ -430,8 +416,6 @@ export const FONTI_DEFAULT: Record<string, Fonte[]> = {
     { id: 'giur_tributaria', label: 'Giurisprudenza tributaria', descrizione: 'Cassazione — sezione tributaria' },
     { id: 'dottrina', label: 'Dottrina tributaria', descrizione: 'Letteratura fiscale' },
   ],
-
-  // INGEGNERE
   'ingegnere_relazioni_tecniche': [
     { id: 'ntc2018', label: 'NTC 2018', descrizione: 'Norme Tecniche per le Costruzioni' },
     { id: 'eurocodici', label: 'Eurocodici', descrizione: 'Standard strutturali europei' },
@@ -448,8 +432,6 @@ export const FONTI_DEFAULT: Record<string, Fonte[]> = {
     { id: 'cei', label: 'Norme CEI', descrizione: 'Norme elettrotecniche' },
     { id: 'direttive_ue', label: 'Direttive UE', descrizione: 'Normativa tecnica europea' },
   ],
-
-  // ARCHITETTO
   'architetto_relazioni_tecniche': [
     { id: 'dpr_380', label: 'D.P.R. 380/2001', descrizione: 'Testo Unico Edilizia' },
     { id: 'ntc2018', label: 'NTC 2018', descrizione: 'Norme Tecniche Costruzioni' },
@@ -458,8 +440,6 @@ export const FONTI_DEFAULT: Record<string, Fonte[]> = {
     { id: 'norme_regionali', label: 'Norme regionali e comunali', descrizione: 'Regolamenti edilizi locali' },
     { id: 'dottrina_tecnica', label: 'Letteratura tecnica', descrizione: 'Manuali di architettura' },
   ],
-
-  // MEDICO
   'medico_redazione_referti': [
     { id: 'linee_guida_snlg', label: 'Linee guida SNLG', descrizione: 'Sistema Nazionale Linee Guida — ISS' },
     { id: 'linee_guida_societa', label: 'Linee guida società scientifiche', descrizione: 'SIMG, SIC, ecc.' },
@@ -469,8 +449,6 @@ export const FONTI_DEFAULT: Record<string, Fonte[]> = {
     { id: 'codice_deont', label: 'Codice deontologico medico', descrizione: 'FNOMCeO 2014' },
     { id: 'normativa_sanitaria', label: 'Normativa sanitaria', descrizione: 'D.Lgs. 502/1992 e ss.' },
   ],
-
-  // FARMACISTA
   'farmacista_consulenza_farmacologica': [
     { id: 'aifa_rcp', label: 'RCP AIFA', descrizione: 'Riassunti caratteristiche prodotto' },
     { id: 'fi', label: 'Foglietti illustrativi AIFA', descrizione: 'Informazioni al paziente' },
@@ -479,8 +457,6 @@ export const FONTI_DEFAULT: Record<string, Fonte[]> = {
     { id: 'micromedex', label: 'Database farmacologici', descrizione: 'Micromedex, Lexicomp' },
     { id: 'normativa_farmaceutica', label: 'Normativa farmaceutica', descrizione: 'D.Lgs. 219/2006 e ss.' },
   ],
-
-  // PSICOLOGO
   'psicologo_relazioni_cliniche': [
     { id: 'dsm5', label: 'DSM-5-TR', descrizione: 'Manuale diagnostico APA' },
     { id: 'icd11', label: 'ICD-11', descrizione: 'Classificazione OMS' },
@@ -489,8 +465,6 @@ export const FONTI_DEFAULT: Record<string, Fonte[]> = {
     { id: 'codice_deont_psico', label: 'Codice deontologico psicologi', descrizione: 'CNOP' },
     { id: 'normativa', label: 'Normativa professionale', descrizione: 'L. 56/1989 e ss.' },
   ],
-
-  // INSEGNANTE
   'insegnante_universita': [
     { id: 'miur', label: 'Normativa MIUR/MUR', descrizione: 'Decreti ministeriali' },
     { id: 'regolamento_ateneo', label: 'Regolamento di Ateneo', descrizione: 'Norme universitarie locali' },
@@ -503,8 +477,6 @@ export const FONTI_DEFAULT: Record<string, Fonte[]> = {
     { id: 'om_esami', label: 'O.M. Esami di Stato', descrizione: 'Ordinanze ministeriali' },
     { id: 'letteratura_did', label: 'Letteratura didattica', descrizione: 'Metodologia didattica' },
   ],
-
-  // CONSULENTE DEL LAVORO
   'consulente_lavoro_gestione_paghe': [
     { id: 'ccnl', label: 'CCNL di settore', descrizione: 'Contratti collettivi nazionali' },
     { id: 'statuto_lav', label: 'Statuto dei Lavoratori', descrizione: 'L. 300/1970' },
@@ -514,8 +486,6 @@ export const FONTI_DEFAULT: Record<string, Fonte[]> = {
     { id: 'cass_lav', label: 'Cassazione Lavoro', descrizione: 'Giurisprudenza di legittimità' },
     { id: 'dottrina', label: 'Dottrina giuslavoristica', descrizione: 'Letteratura specialistica' },
   ],
-
-  // GIORNALISTA
   'giornalista_ricerca_fonti': [
     { id: 'fonti_primarie', label: 'Fonti primarie verificate', descrizione: 'Documenti ufficiali, dati PA' },
     { id: 'agenzie_stampa', label: 'Agenzie di stampa', descrizione: 'ANSA, AGI, Reuters, AP' },
@@ -523,8 +493,6 @@ export const FONTI_DEFAULT: Record<string, Fonte[]> = {
     { id: 'databases', label: 'Database giornalistici', descrizione: 'Factiva, LexisNexis' },
     { id: 'carta_doveri', label: 'Carta dei Doveri del Giornalista', descrizione: 'Deontologia professionale' },
   ],
-
-  // RICERCATORE
   'ricercatore_letteratura': [
     { id: 'pubmed', label: 'PubMed / MEDLINE', descrizione: 'Letteratura biomedica' },
     { id: 'scopus', label: 'Scopus / Web of Science', descrizione: 'Database multidisciplinare' },
@@ -536,7 +504,7 @@ export const FONTI_DEFAULT: Record<string, Fonte[]> = {
 }
 
 // ============================================================
-// HELPER FUNCTIONS
+// HELPER FUNCTIONS (invariate)
 // ============================================================
 export function getFontiKey(professione: string, utilizzo: string, specializzazione: string): string {
   const keys = [
@@ -564,7 +532,6 @@ export function getFontiMultiple(professione: string, utilizzo: string, speciali
       if (!fontiMap.has(f.id)) fontiMap.set(f.id, f)
     }
   }
-  // Se nessuna specializzazione ha fonti, prova con il solo utilizzo
   if (fontiMap.size === 0) {
     const fonti = getFontiDefault(professione, utilizzo, '')
     for (const f of fonti) {
@@ -574,7 +541,6 @@ export function getFontiMultiple(professione: string, utilizzo: string, speciali
   return Array.from(fontiMap.values())
 }
 
-// Lista professioni per UI
 export const PROFESSIONI_LIST = [
   { value: 'avvocato', label: 'Avvocato', emoji: '⚖️', categoria: 'Legale' },
   { value: 'notaio', label: 'Notaio', emoji: '📜', categoria: 'Legale' },

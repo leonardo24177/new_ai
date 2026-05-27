@@ -8,6 +8,124 @@ const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
 })
 
+// ─── Tipi Drive ──────────────────────────────────────────────
+interface DriveFolder {
+  folder_id: string
+  nome: string
+  contesto: string
+}
+
+interface DriveFile {
+  id: string
+  name: string
+  mimeType: string
+  modifiedTime?: string
+}
+
+interface DriveFileContent {
+  nome: string
+  testo: string
+}
+
+// ─── Helpers Drive ───────────────────────────────────────────
+
+/**
+ * Cerca i file più recenti in una cartella Drive.
+ * Usa l'access token Google dell'utente salvato in Supabase.
+ */
+async function searchDriveFolder(
+  folderId: string,
+  accessToken: string,
+  maxFiles = 5
+): Promise<DriveFile[]> {
+  try {
+    const query = encodeURIComponent(
+      `'${folderId}' in parents and trashed = false and mimeType != 'application/vnd.google-apps.folder'`
+    )
+    const res = await fetch(
+      `https://www.googleapis.com/drive/v3/files?q=${query}&orderBy=modifiedTime desc&pageSize=${maxFiles}&fields=files(id,name,mimeType,modifiedTime)`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    )
+    if (!res.ok) return []
+    const data = await res.json()
+    return data.files || []
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Legge il testo di un file Google Docs o testo semplice.
+ * Per Google Docs esporta come plain text.
+ * Per altri tipi scarica il contenuto diretto.
+ */
+async function readDriveFile(
+  file: DriveFile,
+  accessToken: string
+): Promise<string> {
+  try {
+    let url: string
+    if (file.mimeType === 'application/vnd.google-apps.document') {
+      url = `https://www.googleapis.com/drive/v3/files/${file.id}/export?mimeType=text/plain`
+    } else if (
+      file.mimeType === 'text/plain' ||
+      file.mimeType === 'text/markdown' ||
+      file.mimeType === 'text/csv'
+    ) {
+      url = `https://www.googleapis.com/drive/v3/files/${file.id}?alt=media`
+    } else {
+      // Tipo non supportato per lettura testo (pdf, immagini, ecc.)
+      return ''
+    }
+
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+    if (!res.ok) return ''
+    const text = await res.text()
+    // Limita a 8000 caratteri per file per non gonfiare il contesto
+    return text.slice(0, 8000)
+  } catch {
+    return ''
+  }
+}
+
+/**
+ * Recupera l'access token Google dell'utente da Supabase.
+ * Il token viene salvato durante il flow OAuth di connessione Drive.
+ */
+async function getGoogleAccessToken(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string
+): Promise<string | null> {
+  try {
+    const { data } = await supabase
+      .from('user_oauth_tokens')
+      .select('access_token, expires_at')
+      .eq('user_id', userId)
+      .eq('provider', 'google')
+      .single()
+
+    if (!data) return null
+
+    // Controlla se il token è scaduto (con margine di 5 minuti)
+    if (data.expires_at) {
+      const expiresAt = new Date(data.expires_at).getTime()
+      if (Date.now() > expiresAt - 5 * 60 * 1000) {
+        // Token scaduto — l'utente dovrà ricollegare Drive
+        // TODO: implementare refresh token
+        return null
+      }
+    }
+
+    return data.access_token
+  } catch {
+    return null
+  }
+}
+
+// ─── Route principale ─────────────────────────────────────────
+
 export async function POST(req: NextRequest) {
   try {
     const supabase = await createClient()
@@ -80,7 +198,7 @@ export async function POST(req: NextRequest) {
         .in('slug', active_skill_slugs)
 
       if (activeSkillsData && activeSkillsData.length > 0) {
-        const extraSys = activeSkillsData.map(s => s.extra_sys).join('\n\n')
+        const extraSys = activeSkillsData.map((s: { extra_sys: string }) => s.extra_sys).join('\n\n')
         systemPrompt = `${systemPrompt}\n\n---\n${extraSys}`
       }
     }
@@ -115,6 +233,64 @@ export async function POST(req: NextRequest) {
         }
       }
     }
+
+    // ─── 7b. CARTELLE GOOGLE DRIVE ────────────────────────────
+    // Recupera tutte le cartelle Drive collegate dall'utente
+    // (salvate in user_configs.drive_folders — indipendenti dagli ambiti)
+    const { data: userConfig } = await supabase
+      .from('user_configs')
+      .select('drive_folders')
+      .eq('user_id', user.id)
+      .single()
+
+    const driveFolders: DriveFolder[] = userConfig?.drive_folders || []
+
+    if (driveFolders.length > 0) {
+      const accessToken = await getGoogleAccessToken(supabase, user.id)
+
+      if (accessToken) {
+        const lastUserMessage = messages[messages.length - 1]?.content || ''
+
+        for (const folder of driveFolders) {
+          // Cerca nella cartella se il messaggio è potenzialmente pertinente al suo contesto
+          // Logica semplice: cerca sempre (max 3 file per cartella) e lascia all'AI decidere la pertinenza
+          // In futuro si può migliorare con embedding per filtrare prima
+          const files = await searchDriveFolder(folder.folder_id, accessToken, 3)
+
+          if (files.length === 0) continue
+
+          const driveContents: DriveFileContent[] = []
+          for (const file of files) {
+            const testo = await readDriveFile(file, accessToken)
+            if (testo.trim()) {
+              driveContents.push({ nome: file.name, testo })
+            }
+          }
+
+          if (driveContents.length > 0) {
+            const header = `[Cartella Google Drive: "${folder.nome}" — ${folder.contesto}]`
+            const body = driveContents
+              .map(f => `\n  📄 ${f.nome}:\n${f.testo}`)
+              .join('\n')
+            fileTexts.push(`${header}${body}`)
+          } else {
+            // Nessun contenuto leggibile, includi solo i nomi dei file
+            const fileNames = files.map(f => `  • ${f.name}`).join('\n')
+            fileTexts.push(
+              `[Cartella Google Drive: "${folder.nome}" — ${folder.contesto}]\nFile disponibili (contenuto non leggibile):\n${fileNames}`
+            )
+          }
+
+          // Log per debug
+          console.log(`[Drive] Cartella "${folder.nome}": ${files.length} file trovati, ${driveContents.length} letti`)
+        }
+      } else if (driveFolders.length > 0) {
+        // Token non disponibile: avvisa nel system prompt
+        console.warn('[Drive] Access token Google non disponibile per user:', user.id)
+        // Non bloccare la chat, semplicemente non inietta contenuto Drive
+      }
+    }
+    // ─── fine Drive ───────────────────────────────────────────
 
     if (file_contexts && file_contexts.length > 0) {
       for (const fc of file_contexts) {
@@ -185,7 +361,6 @@ export async function POST(req: NextRequest) {
             if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
               const chunk = event.delta.text
               fullText += chunk
-              // Invia ogni chunk come SSE
               controller.enqueue(encoder.encode(`data: ${JSON.stringify({ chunk })}\n\n`))
             }
 
@@ -198,7 +373,6 @@ export async function POST(req: NextRequest) {
             }
           }
 
-          // Calcola e salva costo
           const costoStimato = calcolaCosto(model, inputTokens, outputTokens)
 
           if (conversation_id && fullText) {
@@ -213,7 +387,6 @@ export async function POST(req: NextRequest) {
             })
           }
 
-          // Invia evento finale con metadati
           controller.enqueue(encoder.encode(
             `data: ${JSON.stringify({
               done: true,

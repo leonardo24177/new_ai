@@ -11,6 +11,7 @@ import {
   type Professione,
   type Fonte,
 } from '@/lib/onboarding/config'
+import DriveFolderPicker, { DriveFolder } from '@/components/DriveFolderPicker'
 
 type Ambito = 'lavoro' | 'studio' | 'personale'
 
@@ -39,7 +40,6 @@ interface UserFile {
   ambito: string | null
 }
 
-// Raggruppa professioni per categoria (stesso approccio dell'onboarding)
 const PROFESSIONI_PER_CATEGORIA = PROFESSIONI_LIST.reduce((acc, p) => {
   if (!acc[p.categoria]) acc[p.categoria] = []
   acc[p.categoria].push(p)
@@ -104,7 +104,7 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
-  const [activeTab, setActiveTab] = useState<'ambiti' | 'file' | 'prompt'>('ambiti')
+  const [activeTab, setActiveTab] = useState<'ambiti' | 'file' | 'drive' | 'prompt'>('ambiti')
   const [activeAmbito, setActiveAmbito] = useState<Ambito | null>(null)
   const [nomeUtente, setNomeUtente] = useState('')
   const [ambitiData, setAmbitiData] = useState<AmbitoData[]>([])
@@ -113,6 +113,7 @@ export default function ProfilePage() {
   const [dragIndex, setDragIndex] = useState<number | null>(null)
   const [successMsg, setSuccessMsg] = useState('')
   const [activeFileAmbito, setActiveFileAmbito] = useState<string>('tutti')
+  const [driveFolders, setDriveFolders] = useState<DriveFolder[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => { loadProfile() }, [])
@@ -132,8 +133,11 @@ export default function ProfilePage() {
     }
 
     const { data: config } = await supabase
-      .from('user_configs').select('system_prompt_base').eq('user_id', user.id).single()
-    if (config) setSystemPrompt(config.system_prompt_base)
+      .from('user_configs').select('system_prompt_base, drive_folders').eq('user_id', user.id).single()
+    if (config) {
+      setSystemPrompt(config.system_prompt_base)
+      if (config.drive_folders) setDriveFolders(config.drive_folders)
+    }
 
     const { data: files } = await supabase
       .from('user_files').select('*').eq('user_id', user.id)
@@ -234,7 +238,6 @@ export default function ProfilePage() {
       const formData = new FormData()
       formData.append('file', file)
       formData.append('tipo_contesto', 'profile')
-      // passa l'ambito selezionato nel tab file (se non è 'tutti')
       if (activeFileAmbito && activeFileAmbito !== 'tutti') {
         formData.append('ambito', activeFileAmbito)
       }
@@ -260,6 +263,23 @@ export default function ProfilePage() {
     await supabase.storage.from('user-files').remove([storagePath])
     await supabase.from('user_files').delete().eq('id', fileId)
     setProfileFiles(prev => prev.filter(f => f.id !== fileId))
+  }
+
+  async function saveDriveFolders() {
+    setSaving(true)
+    try {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      await supabase.from('user_configs').upsert(
+        { user_id: user.id, drive_folders: driveFolders },
+        { onConflict: 'user_id' }
+      )
+      setSuccessMsg('Cartelle Drive salvate!')
+      setTimeout(() => setSuccessMsg(''), 2000)
+    } finally {
+      setSaving(false)
+    }
   }
 
   if (loading) {
@@ -293,11 +313,16 @@ export default function ProfilePage() {
 
       <div className="max-w-2xl mx-auto px-4 py-4">
 
-        {/* Tab */}
-        <div className="flex gap-1 bg-gray-100 rounded-xl p-1 mb-5"
+        {/* Tab — ora con Drive */}
+        <div className="flex gap-1 bg-gray-100 rounded-xl p-1 mb-5 overflow-x-auto"
           style={{ msOverflowStyle: 'none', scrollbarWidth: 'none' }}>
-          {[{ key: 'ambiti', label: 'Ambiti' }, { key: 'file', label: 'File' }, { key: 'prompt', label: 'System Prompt' }].map(tab => (
-            <button key={tab.key} onClick={() => setActiveTab(tab.key as 'ambiti' | 'file' | 'prompt')}
+          {[
+            { key: 'ambiti', label: 'Ambiti' },
+            { key: 'file', label: 'File' },
+            { key: 'drive', label: '🗂 Drive' },
+            { key: 'prompt', label: 'System Prompt' },
+          ].map(tab => (
+            <button key={tab.key} onClick={() => setActiveTab(tab.key as 'ambiti' | 'file' | 'drive' | 'prompt')}
               className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
                 activeTab === tab.key ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'
               }`}>
@@ -309,7 +334,6 @@ export default function ProfilePage() {
         {/* TAB AMBITI */}
         {activeTab === 'ambiti' && (
           <div>
-            {/* Selettore ambito */}
             <div className="flex gap-2 mb-5 overflow-x-auto pb-1"
               style={{ msOverflowStyle: 'none', scrollbarWidth: 'none' }}>
               {ambitiData.map(ad => {
@@ -333,7 +357,6 @@ export default function ProfilePage() {
                 {/* ── LAVORO ── */}
                 {currentAmbito.ambito === 'lavoro' && (
                   <>
-                    {/* Professione — raggruppata per categoria, identica all'onboarding */}
                     <div className="bg-white rounded-2xl border border-gray-200 p-4">
                       <h3 className="text-sm font-semibold text-gray-900 mb-4">Professione</h3>
                       <div className="space-y-4">
@@ -364,7 +387,6 @@ export default function ProfilePage() {
                       </div>
                     </div>
 
-                    {/* Utilizzo */}
                     {currentAmbito.professione && currentAmbito.professione !== 'altro' &&
                       UTILIZZI[currentAmbito.professione as Professione]?.length > 0 && (
                       <div className="bg-white rounded-2xl border border-gray-200 p-4">
@@ -389,7 +411,6 @@ export default function ProfilePage() {
                       </div>
                     )}
 
-                    {/* Specializzazione — multipla */}
                     {currentAmbito.utilizzo &&
                       SPECIALIZZAZIONI[`${currentAmbito.professione}_${currentAmbito.utilizzo}`]?.length > 0 && (
                       <div className="bg-white rounded-2xl border border-gray-200 p-4">
@@ -425,7 +446,6 @@ export default function ProfilePage() {
                       </div>
                     )}
 
-                    {/* Fonti */}
                     {currentAmbito.fonti.length > 0 && (
                       <div className="bg-white rounded-2xl border border-gray-200 p-4">
                         <h3 className="text-sm font-semibold text-gray-900 mb-1">Gerarchia fonti</h3>
@@ -459,7 +479,6 @@ export default function ProfilePage() {
                       </div>
                     )}
 
-                    {/* Citazione */}
                     <div className="bg-white rounded-2xl border border-gray-200 p-4">
                       <h3 className="text-sm font-semibold text-gray-900 mb-3">Citazione fonti</h3>
                       <div className="space-y-2">
@@ -557,7 +576,6 @@ export default function ProfilePage() {
         {/* TAB FILE */}
         {activeTab === 'file' && (
           <div>
-            {/* Subtab per ambito */}
             <div className="flex gap-1 mb-4 overflow-x-auto" style={{ msOverflowStyle: 'none', scrollbarWidth: 'none' }}>
               {[
                 { key: 'tutti', label: 'Tutti', emoji: '📁' },
@@ -637,6 +655,41 @@ export default function ProfilePage() {
                 </div>
               )
             })()}
+          </div>
+        )}
+
+        {/* TAB DRIVE */}
+        {activeTab === 'drive' && (
+          <div>
+            <div className="mb-4">
+              <h2 className="text-sm font-semibold text-gray-900">Cartelle Google Drive</h2>
+              <p className="text-xs text-gray-400 mt-0.5">
+                L&apos;AI le consulta automaticamente in tutte le chat
+              </p>
+            </div>
+
+            {/* Banner informativo */}
+            <div className="bg-blue-50 border border-blue-100 rounded-2xl p-3 mb-4 flex gap-2">
+              <span className="text-base flex-shrink-0">💡</span>
+              <p className="text-xs text-blue-700 leading-relaxed">
+                Le cartelle Drive non sono legate a nessun ambito specifico — puoi collegare ricette, documenti personali, materiale di studio e altro. Aggiungi sempre un contesto chiaro così l&apos;AI sa quando consultarle.
+              </p>
+            </div>
+
+            <DriveFolderPicker
+              folders={driveFolders}
+              onChange={setDriveFolders}
+            />
+
+            {driveFolders.length > 0 && (
+              <button
+                onClick={saveDriveFolders}
+                disabled={saving}
+                className="mt-4 w-full bg-gray-900 text-white rounded-xl py-3.5 text-sm font-medium active:bg-gray-800 disabled:opacity-40 transition-colors"
+              >
+                {saving ? 'Salvo...' : 'Salva cartelle Drive'}
+              </button>
+            )}
           </div>
         )}
 
