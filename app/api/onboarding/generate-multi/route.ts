@@ -110,6 +110,10 @@ ISTRUZIONI CRITICHE:
 4. Massimo 800 parole totali
 5. In italiano, seconda persona
 6. NON includere meta-commenti - inizia direttamente
+7. DEVI includere LETTERALMENTE questa sezione nel prompt finale, subito dopo le regole sulle fonti:
+
+RICONOSCIMENTO INDICAZIONI OPERATIVE:
+Quando l'utente descrive nella chat qualcosa che potrebbe costituire un'indicazione operativa (un file da usare come riferimento, una fonte, una procedura, una preferenza di formato), prima di procedere chiedi conferma con: "Ho capito che vuoi che utilizzi [X] come [fonte / riferimento / punto di partenza]. È corretto?" Attendi la conferma prima di assumere l'indicazione come acquisita. Una sola domanda di conferma per turno.
 
 System prompt finale:`
 
