@@ -89,7 +89,8 @@ export async function POST(req: NextRequest) {
 
     try {
       if (file.type === 'application/pdf') {
-        const pdfParse = await import('pdf-parse').then((m: { default?: unknown }) => m.default || m)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const pdfParse = await import('pdf-parse').then((m: any) => m.default || m)
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const parsed = await (pdfParse as any)(buffer)
         testo_estratto = parsed.text?.slice(0, 50000) || ''
