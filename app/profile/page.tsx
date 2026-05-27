@@ -754,12 +754,10 @@ export default function ProfilePage() {
               </p>
             </div>
             <DriveFolderPicker folders={driveFolders} onChange={setDriveFolders} />
-            {driveFolders.length > 0 && (
-              <button onClick={saveDriveFolders} disabled={saving}
-                className="mt-4 w-full bg-gray-900 text-white rounded-xl py-3.5 text-sm font-medium active:bg-gray-800 disabled:opacity-40 transition-colors">
-                {saving ? 'Salvo...' : 'Salva cartelle Drive'}
-              </button>
-            )}
+            <button onClick={saveDriveFolders} disabled={saving}
+              className="mt-4 w-full bg-gray-900 text-white rounded-xl py-3.5 text-sm font-medium active:bg-gray-800 disabled:opacity-40 transition-colors">
+              {saving ? 'Salvo...' : 'Salva cartelle Drive'}
+            </button>
           </div>
         )}
 
