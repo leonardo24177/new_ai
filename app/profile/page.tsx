@@ -12,6 +12,7 @@ import {
   type Fonte,
 } from '@/lib/onboarding/config'
 import DriveFolderPicker, { DriveFolder } from '@/components/DriveFolderPicker'
+import FileTree from '@/components/FileTree'
 
 type Ambito = 'lavoro' | 'studio' | 'personale'
 
@@ -733,29 +734,7 @@ export default function ProfilePage() {
                   <p className="text-gray-300 text-xs mt-1">Carica file singoli o un&apos;intera cartella</p>
                 </div>
               ) : (
-                <div className="space-y-2">
-                  {filtered.map(f => (
-                    <div key={f.id} className="bg-white rounded-2xl border border-gray-200 px-4 py-3.5 flex items-center gap-3">
-                      <span className="text-xl">{getFileIcon(f.mime_type)}</span>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-900 truncate">{f.nome}</p>
-                        <div className="flex items-center gap-2 mt-0.5">
-                          <p className="text-xs text-gray-400">{formatSize(f.dimensione)}</p>
-                          {f.ambito && activeFileAmbito === 'tutti' && (
-                            <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">
-                              {AMBITI_CONFIG.find(a => a.value === f.ambito)?.emoji} {AMBITI_CONFIG.find(a => a.value === f.ambito)?.label}
-                            </span>
-                          )}
-                          {!f.ambito && (
-                            <span className="text-xs bg-gray-100 text-gray-400 px-2 py-0.5 rounded-full">Tutti gli ambiti</span>
-                          )}
-                        </div>
-                      </div>
-                      <button onClick={() => deleteFile(f.id, f.storage_path)}
-                        className="text-gray-300 active:text-red-500 transition-colors text-lg p-1">🗑</button>
-                    </div>
-                  ))}
-                </div>
+                <FileTree files={filtered} onDelete={deleteFile} />
               )
             })()}
           </div>
