@@ -173,10 +173,9 @@ export default function DriveFolderPicker({ folders, onChange }: Props) {
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (user) {
-      await supabase.from('user_configs').upsert(
-        { user_id: user.id, google_drive_token: null, google_drive_token_expiry: null },
-        { onConflict: 'user_id' }
-      )
+      await supabase.from('user_configs')
+        .update({ google_drive_token: null, google_drive_token_expiry: null })
+        .eq('user_id', user.id)
     }
   }
 
