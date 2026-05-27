@@ -201,13 +201,11 @@ export default function ChatPage() {
     const [
       { data: config },
       { data: ambiti },
-      { data: conv },
       { data: publicSkills },
       { data: admin },
     ] = await Promise.all([
       supabase.from('user_configs').select('nome_assistente').eq('user_id', user.id).single(),
       supabase.from('user_ambiti').select('ambito').eq('user_id', user.id).eq('attivo', true),
-      supabase.from('conversations').insert({ user_id: user.id }).select('id').single(),
       supabase.from('skills').select('id, slug, label, extra_sys').eq('pubblica', true),
       supabase.from('admins').select('user_id').eq('user_id', user.id).single(),
     ])
@@ -223,7 +221,7 @@ export default function ChatPage() {
       setAmbitoAttivo(ambitiList[0] as Ambito)
     }
 
-    if (conv) setConversationId(conv.id)
+    // conversationId rimane null — verrà creata al primo messaggio
     if (publicSkills) setSkills(publicSkills)
     if (admin) setIsAdmin(true)
   }
@@ -251,11 +249,11 @@ export default function ChatPage() {
   }
 
   async function newConversation() {
-    const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
-    const { data: conv } = await supabase.from('conversations').insert({ user_id: user.id }).select('id').single()
-    if (conv) { setConversationId(conv.id); setMessages([]); setFileContexts([]); isFirstMessage.current = true; setSidebarOpen(false) }
+    setConversationId(null)
+    setMessages([])
+    setFileContexts([])
+    isFirstMessage.current = true
+    setSidebarOpen(false)
   }
 
   async function deleteConversation(e: React.MouseEvent, convId: string) {
@@ -316,11 +314,28 @@ export default function ChatPage() {
       textareaRef.current.style.height = 'auto'
       textareaRef.current.blur()
     }
-    if (isFirstMessage.current && conversationId) {
+
+    // Crea la conversazione su Supabase solo al primo messaggio reale
+    let currentConversationId = conversationId
+    if (!currentConversationId) {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        const { data: conv } = await supabase.from('conversations').insert({ user_id: user.id }).select('id').single()
+        if (conv) {
+          currentConversationId = conv.id
+          setConversationId(conv.id)
+          isFirstMessage.current = true
+          loadConversations()
+        }
+      }
+    }
+
+    if (isFirstMessage.current && currentConversationId) {
       isFirstMessage.current = false
       fetch('/api/conversations', {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ conversation_id: conversationId, primo_messaggio: input.trim() }),
+        body: JSON.stringify({ conversation_id: currentConversationId, primo_messaggio: input.trim() }),
       })
     }
     try {
@@ -333,7 +348,7 @@ export default function ChatPage() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           messages: newMessages,
-          conversation_id: conversationId,
+          conversation_id: currentConversationId,
           file_contexts: sentFiles,
           active_skill_slugs: activeSkills,
           ambito_attivo: ambitoAttivo,
