@@ -38,10 +38,7 @@ export default function DriveFolderPicker({ folders, onChange }: Props) {
   const [driveToken, setDriveToken] = useState<string | null>(null)
   const [editingIdx, setEditingIdx] = useState<number | null>(null)
 
-<<<<<<< HEAD
   // Carica gapi picker + Google Identity Services
-=======
->>>>>>> 7fbc05b197a4936532a8c04de6a2f6b88b99a847
   useEffect(() => {
     // Carica gapi
     function loadGapi() {
@@ -137,24 +134,6 @@ export default function DriveFolderPicker({ folders, onChange }: Props) {
     setPickerLoading(true)
 
     try {
-<<<<<<< HEAD
-=======
-      const supabase = createClient()
-      const { data: { session } } = await supabase.auth.getSession()
-
-      // DEBUG — rimuovere dopo il test
-      console.log('Session completa:', session)
-      console.log('provider_token:', session?.provider_token)
-      console.log('access_token:', session?.access_token)
-
-      const accessToken = session?.provider_token
-
-      if (!accessToken) {
-        alert(`Token Google non disponibile.\n\nDebug:\n- provider_token: ${session?.provider_token}\n- user: ${session?.user?.email}\n\nProva logout + login con Google.`)
-        return
-      }
-
->>>>>>> 7fbc05b197a4936532a8c04de6a2f6b88b99a847
       const view = new window.google.picker.DocsView()
       view.setIncludeFolders(true)
       view.setSelectFolderEnabled(true)
