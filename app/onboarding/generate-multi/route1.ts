@@ -23,37 +23,13 @@ export async function POST(req: NextRequest) {
   try {
     const { nome, ambitiData, note_libere } = await req.json()
 
-    // ─── 1. GENERA system_prompt_base NEUTRO ──────────────────────────────────
-    // Solo identità universale, nessun riferimento a professione o ambiti specifici
-    const basePromptRequest = `Crea un'identità base breve per l'assistente AI di ${nome}.
-
-ISTRUZIONI CRITICHE:
-- Massimo 80 parole
-- Solo nome dell'utente, approccio comunicativo generale (diretto, efficiente, preciso)
-- NESSUN riferimento a professione, lavoro, fonti legali, ambiti specifici
-- NESSUNA sezione su "ambito professionale" o "ambito personale"
-- In italiano, seconda persona (tu sei...)
-- Inizia direttamente con "Sei l'assistente personale di ${nome}..."
-- NON includere meta-commenti
-
-Identità base:`
-
-    const baseMessage = await client.messages.create({
-      model: 'claude-sonnet-4-5',
-      max_tokens: 300,
-      messages: [{ role: 'user', content: basePromptRequest }],
-    })
-    const system_prompt_base = baseMessage.content[0].type === 'text'
-      ? baseMessage.content[0].text.trim()
-      : `Sei l'assistente personale di ${nome}. Il tuo approccio è diretto, efficiente e senza fronzoli. Vai dritto al punto, usa liste e schemi per presentare informazioni. Adatta il registro al contesto dell'ambito attivo.`
-
-    // ─── 2. GENERA system_prompt_extra PER OGNI AMBITO ───────────────────────
     const ambiti_prompts: string[] = []
 
     for (const ad of ambitiData) {
       const fontiFiltrate = ad.fonti?.filter((f: { id: string }) => !ad.fonti_escluse?.includes(f.id)) || []
       const gerarchia = fontiFiltrate.map((f: { label: string }, i: number) => `${i + 1}. ${f.label}`).join('\n')
 
+      // Gestione specializzazioni multiple
       const specializzazioni = ad.specializzazioni?.length > 0
         ? ad.specializzazioni.join(', ')
         : ad.specializzazione || ''
@@ -93,11 +69,15 @@ ${contestoAmbito}
 ISTRUZIONI PER LA GENERAZIONE:
 1. Il blocco deve essere in italiano
 2. Massimo 250 parole
-3. Scritto in seconda persona (tu sei... / in questo ambito...)
-4. IMPORTANTE: questo blocco viene aggiunto AL SISTEMA BASE già esistente — NON ripetere l'identità generale
-5. Concentrati SOLO sulle istruzioni specifiche per questo ambito
-${ad.ambito === 'lavoro' ? `6. DEVI includere LETTERALMENTE questa sezione:\n\n--- INIZIO SEZIONE OBBLIGATORIA ---\n${REGOLA_FONTI_FORTE}\n--- FINE SEZIONE OBBLIGATORIA ---\n\n7. Includi la gerarchia delle fonti: ${gerarchia}` : ''}
-${ad.ambito === 'lavoro' ? '8' : '6'}. NON includere meta-commenti — inizia direttamente con il contenuto
+3. Scritto in seconda persona (tu sei...)
+4. DEVI includere LETTERALMENTE questa sezione nella risposta generata:
+
+--- INIZIO SEZIONE OBBLIGATORIA ---
+${REGOLA_FONTI_FORTE}
+--- FINE SEZIONE OBBLIGATORIA ---
+
+${gerarchia ? `5. Includi la gerarchia delle fonti: ${gerarchia}` : ''}
+6. NON includere meta-commenti - inizia direttamente con il contenuto del ruolo
 
 Genera il blocco:`
 
@@ -111,15 +91,41 @@ Genera il blocco:`
       ambiti_prompts.push(blocco)
     }
 
-    // ─── 3. RISPOSTA ─────────────────────────────────────────────────────────
-    // Nota: system_prompt_base va in user_configs
-    //       ambiti_prompts[i] va in user_ambiti per ogni ambito (system_prompt_extra)
-    return NextResponse.json({
-      system_prompt_base,   // ← identità universale neutra
-      ambiti_prompts,       // ← istruzioni specifiche per ambito
-      // Manteniamo anche system_prompt per retrocompatibilità (non usato dal nuovo OnboardingForm)
-      system_prompt: system_prompt_base,
+    // Genera il system prompt finale combinato
+    const ambitiDesc = ambitiData.map((ad: { ambito: string }, i: number) =>
+      `[${ad.ambito.toUpperCase()}]\n${ambiti_prompts[i]}`
+    ).join('\n\n---\n\n')
+
+    const finalPrompt = `Crea un system prompt coerente e unificato per un assistente AI personale per ${nome}.
+
+L'assistente deve coprire questi ambiti:
+${ambitiDesc}
+
+${note_libere ? `Note aggiuntive dell'utente: ${note_libere}` : ''}
+
+ISTRUZIONI CRITICHE:
+1. Unifica i blocchi in un unico system prompt fluido e coerente
+2. Mantieni INTATTE tutte le regole sulle fonti non verificate — non riassumere, non semplificare
+3. La sezione "REGOLA ASSOLUTA — DA APPLICARE PRIMA DI OGNI RISPOSTA" deve apparire COMPLETA nel prompt finale
+4. Massimo 800 parole totali
+5. In italiano, seconda persona
+6. NON includere meta-commenti - inizia direttamente
+7. DEVI includere LETTERALMENTE questa sezione nel prompt finale, subito dopo le regole sulle fonti:
+
+RICONOSCIMENTO INDICAZIONI OPERATIVE:
+Quando l'utente descrive nella chat qualcosa che potrebbe costituire un'indicazione operativa (un file da usare come riferimento, una fonte, una procedura, una preferenza di formato), prima di procedere chiedi conferma con: "Ho capito che vuoi che utilizzi [X] come [fonte / riferimento / punto di partenza]. È corretto?" Attendi la conferma prima di assumere l'indicazione come acquisita. Una sola domanda di conferma per turno.
+
+System prompt finale:`
+
+    const finalMessage = await client.messages.create({
+      model: 'claude-sonnet-4-5',
+      max_tokens: 2000,
+      messages: [{ role: 'user', content: finalPrompt }],
     })
+
+    const system_prompt = finalMessage.content[0].type === 'text' ? finalMessage.content[0].text : ''
+
+    return NextResponse.json({ system_prompt, ambiti_prompts })
 
   } catch (error) {
     console.error('Errore generazione multi:', error)

@@ -26,13 +26,6 @@ interface AmbitoData {
   tono: 'formale' | 'diretto' | 'colloquiale'
   livello_studio: string
   uso_personale: string
-  // ── NUOVI CAMPI PERSONALE ──────────────────────────────
-  interessi: string[]
-  interessi_custom: string
-  obiettivi: string[]
-  obiettivi_custom: string
-  stile_vita: string[]
-  stile_vita_custom: string
 }
 
 function defaultAmbitoData(ambito: Ambito): AmbitoData {
@@ -41,47 +34,10 @@ function defaultAmbitoData(ambito: Ambito): AmbitoData {
     specializzazione_custom: '', fonti: [], fonti_escluse: [],
     citazione: 'sempre', conflitto_fonti: 'gerarchia', tono: 'formale',
     livello_studio: '', uso_personale: '',
-    interessi: [], interessi_custom: '',
-    obiettivi: [], obiettivi_custom: '',
-    stile_vita: [], stile_vita_custom: '',
   }
 }
 
-// ── COSTANTI NUOVI STEP PERSONALE ──────────────────────────
-const INTERESSI_OPTIONS = [
-  { value: 'sport', label: '🏃 Sport e fitness' },
-  { value: 'musica', label: '🎵 Musica' },
-  { value: 'cucina', label: '🍳 Cucina' },
-  { value: 'lettura', label: '📚 Lettura' },
-  { value: 'viaggi', label: '✈️ Viaggi' },
-  { value: 'tecnologia', label: '💻 Tecnologia' },
-  { value: 'arte', label: '🎨 Arte e creatività' },
-  { value: 'natura', label: '🌿 Natura e outdoor' },
-]
-
-const OBIETTIVI_OPTIONS = [
-  { value: 'salute', label: '💪 Migliorare la salute' },
-  { value: 'finanze', label: '💰 Gestire le finanze' },
-  { value: 'apprendimento', label: '🧠 Apprendimento continuo' },
-  { value: 'produttivita', label: '⚡ Aumentare la produttività' },
-  { value: 'relazioni', label: '🤝 Migliorare le relazioni' },
-  { value: 'creativita', label: '✨ Esprimere la creatività' },
-  { value: 'benessere', label: '🧘 Benessere mentale' },
-  { value: 'progetti', label: '🚀 Realizzare progetti personali' },
-]
-
-const STILE_VITA_OPTIONS = [
-  { value: 'mattiniero', label: '🌅 Mattiniero' },
-  { value: 'notturno', label: '🌙 Notturno' },
-  { value: 'famiglia', label: '👨‍👩‍👧 Con famiglia/figli' },
-  { value: 'animali', label: '🐾 Con animali domestici' },
-  { value: 'citta', label: '🏙️ Vita in città' },
-  { value: 'smart_working', label: '🏠 Smart working' },
-  { value: 'viaggiatore', label: '🧳 Spesso in viaggio' },
-  { value: 'sportivo', label: '🏋️ Stile di vita attivo' },
-]
-// ───────────────────────────────────────────────────────────
-
+// Raggruppa PROFESSIONI_LIST per categoria
 const PROFESSIONI_PER_CATEGORIA = PROFESSIONI_LIST.reduce((acc, p) => {
   if (!acc[p.categoria]) acc[p.categoria] = []
   acc[p.categoria].push(p)
@@ -117,7 +73,7 @@ function getStepsForAmbito(a: AmbitoData): string[] {
     return steps
   }
   if (a.ambito === 'studio') return ['livello', 'tono']
-  if (a.ambito === 'personale') return ['interessi', 'obiettivi', 'stile_vita', 'uso', 'tono']
+  if (a.ambito === 'personale') return ['uso', 'tono']
   return []
 }
 
@@ -145,11 +101,6 @@ export default function OnboardingForm() {
 
   function updateAmbitoData(index: number, field: keyof AmbitoData, value: unknown) {
     setAmbitiData(prev => { const next = [...prev]; next[index] = { ...next[index], [field]: value }; return next })
-  }
-
-  function toggleMulti(ambitoIndex: number, field: 'interessi' | 'obiettivi' | 'stile_vita', value: string) {
-    const prev = (ambitiData[ambitoIndex][field] as string[]) || []
-    updateAmbitoData(ambitoIndex, field, prev.includes(value) ? prev.filter(x => x !== value) : [...prev, value])
   }
 
   useEffect(() => {
@@ -240,13 +191,13 @@ export default function OnboardingForm() {
       })
       if (!res.ok) throw new Error(`Errore API: ${res.status}`)
       const json = await res.json()
-      if (!json.system_prompt_base) throw new Error('System prompt base vuoto')
+      if (!json.system_prompt) throw new Error('System prompt vuoto')
       const supabase = createClient()
       const { data: authData } = await supabase.auth.getUser()
       const user = authData?.user
       if (!user) throw new Error('Utente non autenticato')
       await supabase.from('user_configs').upsert(
-        { user_id: user.id, system_prompt_base: json.system_prompt_base, nome_assistente: 'Assistente', lingua: 'it' },
+        { user_id: user.id, system_prompt_base: json.system_prompt, nome_assistente: 'Assistente', lingua: 'it' },
         { onConflict: 'user_id' }
       )
       for (let i = 0; i < ambitiData.length; i++) {
@@ -265,7 +216,7 @@ export default function OnboardingForm() {
   function showNext() {
     if (globalStep.phase !== 'ambito') return false
     const step = getStepsForAmbito(ambitiData[globalStep.ambitoIndex])[globalStep.stepIndex]
-    return ['fonti', 'conflitto_tono', 'specializzazione', 'interessi', 'obiettivi', 'stile_vita'].includes(step)
+    return ['fonti', 'conflitto_tono', 'specializzazione'].includes(step)
   }
 
   function renderStep() {
@@ -504,71 +455,6 @@ export default function OnboardingForm() {
               </div>
             </>
           )}
-
-          {/* ── NUOVI STEP PERSONALE ─────────────────────────────── */}
-
-          {currentStepName === 'interessi' && (
-            <>
-              <h2 className="text-xl font-semibold text-gray-900 mb-1">Quali sono i tuoi interessi?</h2>
-              <p className="text-gray-500 text-sm mb-5">Seleziona quelli che ti rappresentano</p>
-              <div className="grid grid-cols-2 gap-2 mb-4">
-                {INTERESSI_OPTIONS.map(o => (
-                  <button key={o.value} onClick={() => toggleMulti(ambitoIndex, 'interessi', o.value)}
-                    className={`flex items-center gap-2 px-3 py-3.5 rounded-xl border text-sm font-medium text-left transition-all ${(ad.interessi || []).includes(o.value) ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-200 text-gray-700'}`}>
-                    <span>{o.label}</span>
-                  </button>
-                ))}
-              </div>
-              <input type="text" value={ad.interessi_custom || ''} onChange={e => updateAmbitoData(ambitoIndex, 'interessi_custom', e.target.value)}
-                placeholder="Altri interessi..." className="w-full border border-gray-300 rounded-xl px-4 py-3.5 text-base text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900" />
-              {((ad.interessi || []).length > 0 || ad.interessi_custom?.trim()) && (
-                <p className="text-xs text-gray-400 mt-2">{(ad.interessi || []).length} selezionati{ad.interessi_custom?.trim() && ' + campo libero'}</p>
-              )}
-            </>
-          )}
-
-          {currentStepName === 'obiettivi' && (
-            <>
-              <h2 className="text-xl font-semibold text-gray-900 mb-1">Quali sono i tuoi obiettivi?</h2>
-              <p className="text-gray-500 text-sm mb-5">Su cosa vuoi che ti supporti</p>
-              <div className="grid grid-cols-2 gap-2 mb-4">
-                {OBIETTIVI_OPTIONS.map(o => (
-                  <button key={o.value} onClick={() => toggleMulti(ambitoIndex, 'obiettivi', o.value)}
-                    className={`flex items-center gap-2 px-3 py-3.5 rounded-xl border text-sm font-medium text-left transition-all ${(ad.obiettivi || []).includes(o.value) ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-200 text-gray-700'}`}>
-                    <span>{o.label}</span>
-                  </button>
-                ))}
-              </div>
-              <input type="text" value={ad.obiettivi_custom || ''} onChange={e => updateAmbitoData(ambitoIndex, 'obiettivi_custom', e.target.value)}
-                placeholder="Altri obiettivi..." className="w-full border border-gray-300 rounded-xl px-4 py-3.5 text-base text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900" />
-              {((ad.obiettivi || []).length > 0 || ad.obiettivi_custom?.trim()) && (
-                <p className="text-xs text-gray-400 mt-2">{(ad.obiettivi || []).length} selezionati{ad.obiettivi_custom?.trim() && ' + campo libero'}</p>
-              )}
-            </>
-          )}
-
-          {currentStepName === 'stile_vita' && (
-            <>
-              <h2 className="text-xl font-semibold text-gray-900 mb-1">Come descriveresti il tuo stile di vita?</h2>
-              <p className="text-gray-500 text-sm mb-5">Aiuta l&apos;assistente a conoscerti meglio</p>
-              <div className="grid grid-cols-2 gap-2 mb-4">
-                {STILE_VITA_OPTIONS.map(o => (
-                  <button key={o.value} onClick={() => toggleMulti(ambitoIndex, 'stile_vita', o.value)}
-                    className={`flex items-center gap-2 px-3 py-3.5 rounded-xl border text-sm font-medium text-left transition-all ${(ad.stile_vita || []).includes(o.value) ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-200 text-gray-700'}`}>
-                    <span>{o.label}</span>
-                  </button>
-                ))}
-              </div>
-              <input type="text" value={ad.stile_vita_custom || ''} onChange={e => updateAmbitoData(ambitoIndex, 'stile_vita_custom', e.target.value)}
-                placeholder="Altro..." className="w-full border border-gray-300 rounded-xl px-4 py-3.5 text-base text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900" />
-              {((ad.stile_vita || []).length > 0 || ad.stile_vita_custom?.trim()) && (
-                <p className="text-xs text-gray-400 mt-2">{(ad.stile_vita || []).length} selezionati{ad.stile_vita_custom?.trim() && ' + campo libero'}</p>
-              )}
-            </>
-          )}
-
-          {/* ── FINE NUOVI STEP ──────────────────────────────────── */}
-
         </div>
       )
     }
