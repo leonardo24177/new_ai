@@ -366,6 +366,52 @@ export async function POST(req: NextRequest) {
             })
           }
 
+          // ─── AGGIORNAMENTO PROFILO ────────────────────────────────
+          // Se l'utente ha confermato con "sì/si/ok/yes/confermo" e il
+          // messaggio precedente dell'assistente chiedeva di aggiungere
+          // un'informazione al profilo, aggiorniamo il system prompt.
+          const lastUserMsg = messages[messages.length - 1]?.content?.trim().toLowerCase() || ''
+          const isConferma = ['sì', 'si', 'yes', 'ok', 'confermo', 'certo', 'esatto', 'vai'].includes(lastUserMsg)
+
+          if (isConferma) {
+            const prevMessages = messages.slice(0, -1)
+            const lastAssistantMsg = [...prevMessages].reverse().find(
+              (m: { role: string; content: string }) => m.role === 'assistant'
+            )?.content || ''
+
+            const chiedeAggiornamento = lastAssistantMsg.toLowerCase().includes('vuoi che aggiunga questa informazione al tuo profilo')
+
+            if (chiedeAggiornamento) {
+              // Estrae l'informazione dal messaggio utente che ha preceduto la domanda
+              const msgPrimaDellaConferma = prevMessages.slice(0, -1).reverse().find(
+                (m: { role: string; content: string }) => m.role === 'user'
+              )?.content || ''
+
+              if (msgPrimaDellaConferma) {
+                const { data: currentConfig } = await supabase
+                  .from('user_configs')
+                  .select('system_prompt_base')
+                  .eq('user_id', user.id)
+                  .single()
+
+                const currentPrompt = currentConfig?.system_prompt_base || ''
+                const updatedPrompt = `${currentPrompt}\n\n[Informazione aggiunta dall'utente]\n${msgPrimaDellaConferma}`
+
+                await supabase
+                  .from('user_configs')
+                  .update({ system_prompt_base: updatedPrompt })
+                  .eq('user_id', user.id)
+
+                console.log('[Profilo] System prompt aggiornato con:', msgPrimaDellaConferma)
+
+                controller.enqueue(encoder.encode(
+                  `data: ${JSON.stringify({ profile_updated: true })}\n\n`
+                ))
+              }
+            }
+          }
+          // ─── fine aggiornamento profilo ───────────────────────────
+
           controller.enqueue(encoder.encode(
             `data: ${JSON.stringify({
               done: true,
