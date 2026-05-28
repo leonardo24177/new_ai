@@ -397,6 +397,9 @@ export default function ChatPage() {
       setMessages(prev => [...prev, { role: 'assistant', content: 'Si è verificato un errore. Riprova.' }])
     } finally {
       setLoading(false)
+      setTimeout(() => {
+        textareaRef.current?.focus()
+      }, 50)
     }
   }
 
