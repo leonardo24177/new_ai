@@ -23,49 +23,13 @@ export async function POST(req: NextRequest) {
   try {
     const { nome, ambitiData, note_libere } = await req.json()
 
-    // ─── 1. system_prompt_base NEUTRO con info personali ─────────────────────
-    // Raccoglie solo dati universali: nome, note libere, e dati personali se presenti
-    const ambitoPersonale = ambitiData.find((ad: { ambito: string }) => ad.ambito === 'personale')
-
-    const infoPersonali = ambitoPersonale ? [
-      ambitoPersonale.interessi?.length > 0 ? `Interessi: ${ambitoPersonale.interessi.join(', ')}${ambitoPersonale.interessi_custom ? ', ' + ambitoPersonale.interessi_custom : ''}` : '',
-      ambitoPersonale.obiettivi?.length > 0 ? `Obiettivi personali: ${ambitoPersonale.obiettivi.join(', ')}${ambitoPersonale.obiettivi_custom ? ', ' + ambitoPersonale.obiettivi_custom : ''}` : '',
-      ambitoPersonale.stile_vita?.length > 0 ? `Stile di vita: ${ambitoPersonale.stile_vita.join(', ')}${ambitoPersonale.stile_vita_custom ? ', ' + ambitoPersonale.stile_vita_custom : ''}` : '',
-    ].filter(Boolean).join('\n') : ''
-
-    const basePromptRequest = `Crea l'identità base per l'assistente AI di ${nome}.
-
-Informazioni disponibili su ${nome}:
-${infoPersonali ? infoPersonali : 'Nessuna informazione personale fornita'}
-${note_libere ? `Note aggiuntive: ${note_libere}` : ''}
-
-ISTRUZIONI CRITICHE:
-- Massimo 150 parole
-- Includi nome e, se disponibili, cenni agli interessi/obiettivi personali
-- NESSUN riferimento a professione, fonti legali, ambiti lavorativi
-- NESSUNA sezione su "ambito professionale" o simili
-- In italiano, seconda persona (tu sei...)
-- Inizia con "Sei l'assistente personale di ${nome}..."
-- NON includere meta-commenti
-
-Identità base:`
-
-    const baseMessage = await client.messages.create({
-      model: 'claude-sonnet-4-5',
-      max_tokens: 400,
-      messages: [{ role: 'user', content: basePromptRequest }],
-    })
-    const system_prompt_base = baseMessage.content[0].type === 'text'
-      ? baseMessage.content[0].text.trim()
-      : `Sei l'assistente personale di ${nome}. Il tuo approccio è diretto, efficiente e senza fronzoli. Adatta il registro al contesto dell'ambito attivo.`
-
-    // ─── 2. system_prompt_extra PER OGNI AMBITO ──────────────────────────────
     const ambiti_prompts: string[] = []
 
     for (const ad of ambitiData) {
       const fontiFiltrate = ad.fonti?.filter((f: { id: string }) => !ad.fonti_escluse?.includes(f.id)) || []
       const gerarchia = fontiFiltrate.map((f: { label: string }, i: number) => `${i + 1}. ${f.label}`).join('\n')
 
+      // Gestione specializzazioni multiple
       const specializzazioni = ad.specializzazioni?.length > 0
         ? ad.specializzazioni.join(', ')
         : ad.specializzazione || ''
@@ -94,25 +58,26 @@ Tono: ${ad.tono}`
       } else if (ad.ambito === 'personale') {
         contestoAmbito = `
 Ambito: Uso personale
-Interessi: ${ad.interessi?.join(', ') || ''}${ad.interessi_custom ? ', ' + ad.interessi_custom : ''}
-Obiettivi: ${ad.obiettivi?.join(', ') || ''}${ad.obiettivi_custom ? ', ' + ad.obiettivi_custom : ''}
-Stile di vita: ${ad.stile_vita?.join(', ') || ''}${ad.stile_vita_custom ? ', ' + ad.stile_vita_custom : ''}
 Uso principale: ${ad.uso_personale}
 Tono: ${ad.tono}`
       }
 
-      const prompt = `Genera un blocco di istruzioni specifico per questo ambito dell'assistente AI di ${nome}.
+      const prompt = `Genera un blocco di istruzioni specifico per questo ambito di utilizzo dell'assistente AI per l'utente ${nome}.
 
 ${contestoAmbito}
 
-ISTRUZIONI:
-1. In italiano, massimo 250 parole
-2. Seconda persona (in questo ambito sei... / quando parli di...)
-3. Questo blocco si aggiunge a un'identità base già esistente — NON ripetere nome o caratteristiche generali
-4. Concentrati SOLO sulle istruzioni specifiche per questo ambito
-${ad.ambito === 'lavoro' ? `5. INCLUDI LETTERALMENTE:\n\n${REGOLA_FONTI_FORTE}\n\n6. Includi la gerarchia fonti: ${gerarchia}` : ''}
-${ad.ambito === 'personale' ? `5. Usa gli interessi e obiettivi per personalizzare come l'assistente deve supportare ${nome} in questo ambito` : ''}
-- NON includere meta-commenti, inizia direttamente
+ISTRUZIONI PER LA GENERAZIONE:
+1. Il blocco deve essere in italiano
+2. Massimo 250 parole
+3. Scritto in seconda persona (tu sei...)
+4. DEVI includere LETTERALMENTE questa sezione nella risposta generata:
+
+--- INIZIO SEZIONE OBBLIGATORIA ---
+${REGOLA_FONTI_FORTE}
+--- FINE SEZIONE OBBLIGATORIA ---
+
+${gerarchia ? `5. Includi la gerarchia delle fonti: ${gerarchia}` : ''}
+6. NON includere meta-commenti - inizia direttamente con il contenuto del ruolo
 
 Genera il blocco:`
 
@@ -126,11 +91,41 @@ Genera il blocco:`
       ambiti_prompts.push(blocco)
     }
 
-    return NextResponse.json({
-      system_prompt_base,
-      ambiti_prompts,
-      system_prompt: system_prompt_base, // retrocompatibilità
+    // Genera il system prompt finale combinato
+    const ambitiDesc = ambitiData.map((ad: { ambito: string }, i: number) =>
+      `[${ad.ambito.toUpperCase()}]\n${ambiti_prompts[i]}`
+    ).join('\n\n---\n\n')
+
+    const finalPrompt = `Crea un system prompt coerente e unificato per un assistente AI personale per ${nome}.
+
+L'assistente deve coprire questi ambiti:
+${ambitiDesc}
+
+${note_libere ? `Note aggiuntive dell'utente: ${note_libere}` : ''}
+
+ISTRUZIONI CRITICHE:
+1. Unifica i blocchi in un unico system prompt fluido e coerente
+2. Mantieni INTATTE tutte le regole sulle fonti non verificate — non riassumere, non semplificare
+3. La sezione "REGOLA ASSOLUTA — DA APPLICARE PRIMA DI OGNI RISPOSTA" deve apparire COMPLETA nel prompt finale
+4. Massimo 800 parole totali
+5. In italiano, seconda persona
+6. NON includere meta-commenti - inizia direttamente
+7. DEVI includere LETTERALMENTE questa sezione nel prompt finale, subito dopo le regole sulle fonti:
+
+RICONOSCIMENTO INDICAZIONI OPERATIVE:
+Quando l'utente descrive nella chat qualcosa che potrebbe costituire un'indicazione operativa (un file da usare come riferimento, una fonte, una procedura, una preferenza di formato), prima di procedere chiedi conferma con: "Ho capito che vuoi che utilizzi [X] come [fonte / riferimento / punto di partenza]. È corretto?" Attendi la conferma prima di assumere l'indicazione come acquisita. Una sola domanda di conferma per turno.
+
+System prompt finale:`
+
+    const finalMessage = await client.messages.create({
+      model: 'claude-sonnet-4-5',
+      max_tokens: 2000,
+      messages: [{ role: 'user', content: finalPrompt }],
     })
+
+    const system_prompt = finalMessage.content[0].type === 'text' ? finalMessage.content[0].text : ''
+
+    return NextResponse.json({ system_prompt, ambiti_prompts })
 
   } catch (error) {
     console.error('Errore generazione multi:', error)
