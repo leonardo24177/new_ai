@@ -84,15 +84,21 @@ export default function AdminPage() {
     try {
       const supabase = createClient()
       if (editingSkill) {
-        await supabase.from('skills').update(skillForm).eq('id', editingSkill.id)
+        const { error } = await supabase.from('skills').update(skillForm).eq('id', editingSkill.id)
+        if (error) throw error
       } else {
-        await supabase.from('skills').insert(skillForm)
+        const { error } = await supabase.from('skills').insert(skillForm)
+        if (error) throw error
       }
       setSuccessMsg('Skill salvata!')
       setTimeout(() => setSuccessMsg(''), 2000)
       setEditingSkill(null)
       setNewSkill(false)
       loadSkills()
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : (err as { message?: string })?.message || 'Errore sconosciuto'
+      alert('Errore salvataggio: ' + msg)
+      console.error('saveSkill error:', err)
     } finally {
       setSaving(false)
     }
