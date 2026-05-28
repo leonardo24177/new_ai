@@ -21,7 +21,22 @@ interface Skill {
   extra_sys: string
   categoria: string
   pubblica: boolean
+  professione: string
 }
+
+const PROFESSIONI = [
+  { value: 'generale', label: '🌐 Generale (tutti)' },
+  { value: 'avvocato', label: '⚖️ Avvocato' },
+  { value: 'commercialista', label: '🧾 Commercialista' },
+  { value: 'medico', label: '🩺 Medico' },
+  { value: 'farmacista', label: '💊 Farmacista' },
+  { value: 'psicologo', label: '🧠 Psicologo' },
+  { value: 'fisioterapista', label: '🏃 Fisioterapista' },
+  { value: 'ingegnere', label: '🏗️ Ingegnere' },
+  { value: 'architetto', label: '📐 Architetto' },
+  { value: 'revisore_contabile', label: '📊 Revisore contabile' },
+  { value: 'notaio', label: '📜 Notaio' },
+]
 
 interface Stats {
   totale_messaggi: number
@@ -45,7 +60,7 @@ export default function AdminPage() {
   const [saving, setSaving] = useState(false)
   const [successMsg, setSuccessMsg] = useState('')
   const [skillForm, setSkillForm] = useState({
-    slug: '', label: '', extra_sys: '', categoria: 'generale', pubblica: true
+    slug: '', label: '', extra_sys: '', categoria: 'generale', pubblica: true, professione: 'generale'
   })
 
   useEffect(() => { checkAdminAndLoad() }, [])
@@ -123,14 +138,14 @@ export default function AdminPage() {
 
   function openEditSkill(skill: Skill) {
     setEditingSkill(skill)
-    setSkillForm({ slug: skill.slug, label: skill.label, extra_sys: skill.extra_sys, categoria: skill.categoria, pubblica: skill.pubblica })
+    setSkillForm({ slug: skill.slug, label: skill.label, extra_sys: skill.extra_sys, categoria: skill.categoria, pubblica: skill.pubblica, professione: skill.professione || 'generale' })
     setNewSkill(false)
   }
 
   function openNewSkill() {
     setNewSkill(true)
     setEditingSkill(null)
-    setSkillForm({ slug: '', label: '', extra_sys: '', categoria: 'generale', pubblica: true })
+    setSkillForm({ slug: '', label: '', extra_sys: '', categoria: 'generale', pubblica: true, professione: 'generale' })
   }
 
   function getUserEmail(userId: string) {
@@ -315,6 +330,18 @@ export default function AdminPage() {
                     </div>
                   </div>
                   <div>
+                    <label className="text-xs text-gray-500 mb-1 block">Professione</label>
+                    <select
+                      value={skillForm.professione}
+                      onChange={e => setSkillForm(p => ({ ...p, professione: e.target.value }))}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900"
+                    >
+                      {PROFESSIONI.map(p => (
+                        <option key={p.value} value={p.value}>{p.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
                     <label className="text-xs text-gray-500 mb-1 block">Extra System Prompt</label>
                     <textarea
                       value={skillForm.extra_sys}
@@ -360,6 +387,11 @@ export default function AdminPage() {
                           <div className="flex items-center gap-2 mb-1 flex-wrap">
                             <p className="text-sm font-semibold text-gray-900">{skill.label}</p>
                             <span className="text-xs text-gray-400 font-mono">{skill.slug}</span>
+                            {skill.professione && skill.professione !== 'generale' && (
+                              <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
+                                {PROFESSIONI.find(p => p.value === skill.professione)?.label || skill.professione}
+                              </span>
+                            )}
                             {!skill.pubblica && (
                               <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full">Privata</span>
                             )}

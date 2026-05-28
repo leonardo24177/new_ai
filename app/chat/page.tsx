@@ -163,6 +163,7 @@ export default function ChatPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [skills, setSkills] = useState<{ id: string; slug: string; label: string; extra_sys: string }[]>([])
   const [activeSkills, setActiveSkills] = useState<string[]>([])
+  const [professione, setProfessione] = useState<string>('')
   const [showSkills, setShowSkills] = useState(false)
   const [loadingHistory, setLoadingHistory] = useState(false)
   const [isAdmin, setIsAdmin] = useState(false)
@@ -201,12 +202,12 @@ export default function ChatPage() {
     const [
       { data: config },
       { data: ambiti },
-      { data: publicSkills },
+      { data: ambitoLavoro },
       { data: admin },
     ] = await Promise.all([
       supabase.from('user_configs').select('nome_assistente').eq('user_id', user.id).single(),
       supabase.from('user_ambiti').select('ambito').eq('user_id', user.id).eq('attivo', true),
-      supabase.from('skills').select('id, slug, label, extra_sys').eq('pubblica', true),
+      supabase.from('user_ambiti').select('onboarding_data').eq('user_id', user.id).eq('ambito', 'lavoro').single(),
       supabase.from('admins').select('user_id').eq('user_id', user.id).single(),
     ])
 
@@ -214,6 +215,21 @@ export default function ChatPage() {
 
     setNomeAssistente(config.nome_assistente || 'Assistente')
     setNomeUtente(user.user_metadata?.nome || user.email?.split('@')[0] || '')
+
+    const professioneUtente = ambitoLavoro?.onboarding_data?.professione || ''
+    if (professioneUtente) setProfessione(professioneUtente)
+
+    // Carica skill filtrate per professione (+ quelle generali)
+    let skillQuery = supabase
+      .from('skills')
+      .select('id, slug, label, extra_sys, professione')
+      .eq('pubblica', true)
+
+    if (professioneUtente) {
+      skillQuery = skillQuery.or(`professione.eq.${professioneUtente},professione.eq.generale,professione.is.null`)
+    }
+
+    const { data: publicSkills } = await skillQuery
 
     if (ambiti && ambiti.length > 0) {
       const ambitiList = ambiti.map(a => a.ambito)
