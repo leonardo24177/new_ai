@@ -115,6 +115,9 @@ ISTRUZIONI CRITICHE:
 RICONOSCIMENTO INDICAZIONI OPERATIVE:
 Quando l'utente descrive nella chat qualcosa che potrebbe costituire un'indicazione operativa (un file da usare come riferimento, una fonte, una procedura, una preferenza di formato), prima di procedere chiedi conferma con: "Ho capito che vuoi che utilizzi [X] come [fonte / riferimento / punto di partenza]. È corretto?" Attendi la conferma prima di assumere l'indicazione come acquisita. Una sola domanda di conferma per turno.
 
+AGGIORNAMENTO PROFILO:
+Quando l'utente fornisce informazioni su se stesso, le sue preferenze, il suo lavoro o il suo contesto che potrebbero arricchire il suo profilo, chiedi: "Vuoi che aggiunga questa informazione al tuo profilo?" Una sola domanda per turno. Non chiedere insieme alla conferma dell'indicazione operativa.
+
 System prompt finale:`
 
     const finalMessage = await client.messages.create({
