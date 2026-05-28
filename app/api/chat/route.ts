@@ -371,7 +371,8 @@ export async function POST(req: NextRequest) {
           // messaggio precedente dell'assistente chiedeva di aggiungere
           // un'informazione al profilo, aggiorniamo il system prompt.
           const lastUserMsg = messages[messages.length - 1]?.content?.trim().toLowerCase() || ''
-          const isConferma = ['sì', 'si', 'yes', 'ok', 'confermo', 'certo', 'esatto', 'vai'].includes(lastUserMsg)
+          const PAROLE_CONFERMA = ['sì', 'si', 'yes', 'ok', 'confermo', 'certo', 'esatto', 'vai', 'inserisci', 'aggiungi', 'salva', 'perfetto', 'corretto', 'giusto']
+          const isConferma = PAROLE_CONFERMA.some(p => lastUserMsg.includes(p))
 
           if (isConferma) {
             const prevMessages = messages.slice(0, -1)
