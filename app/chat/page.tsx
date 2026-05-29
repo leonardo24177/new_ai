@@ -206,7 +206,7 @@ export default function ChatPage() {
       { data: admin },
     ] = await Promise.all([
       supabase.from('user_configs').select('nome_assistente').eq('user_id', user.id).single(),
-      supabase.from('user_ambiti').select('ambito').eq('user_id', user.id),
+      supabase.from('user_ambiti').select('ambito').eq('user_id', user.id).eq('attivo', true),
       supabase.from('user_ambiti').select('onboarding_data').eq('user_id', user.id).eq('ambito', 'lavoro').single(),
       supabase.from('admins').select('user_id').eq('user_id', user.id).single(),
     ])
@@ -355,10 +355,20 @@ export default function ChatPage() {
       })
     }
     try {
-      // ── Recupera il token Google dalla sessione Supabase ──
+      // ── Recupera il token Google solo se l'utente ha cartelle Drive configurate ──
       const supabase = createClient()
       const { data: { session } } = await supabase.auth.getSession()
-      const googleToken = session?.provider_token || null
+      const { data: { user: currentUser } } = await supabase.auth.getUser()
+      let googleToken: string | null = null
+      if (currentUser) {
+        const { data: userCfg } = await supabase
+          .from('user_configs')
+          .select('drive_folders')
+          .eq('user_id', currentUser.id)
+          .single()
+        const hasDriveFolders = userCfg?.drive_folders && Array.isArray(userCfg.drive_folders) && userCfg.drive_folders.length > 0
+        googleToken = hasDriveFolders ? (session?.provider_token || null) : null
+      }
 
       const res = await fetch('/api/chat', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
