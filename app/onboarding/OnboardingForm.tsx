@@ -246,7 +246,7 @@ export default function OnboardingForm() {
       const user = authData?.user
       if (!user) throw new Error('Utente non autenticato')
       await supabase.from('user_configs').upsert(
-        { user_id: user.id, system_prompt_base: json.system_prompt_base, nome_assistente: 'Assistente', lingua: 'it' },
+        { user_id: user.id, system_prompt_base: json.system_prompt_base, nome_assistente: nome.trim() || 'Assistente', lingua: 'it' },
         { onConflict: 'user_id' }
       )
       for (let i = 0; i < ambitiData.length; i++) {
