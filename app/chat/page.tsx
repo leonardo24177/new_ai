@@ -206,7 +206,7 @@ export default function ChatPage() {
       { data: admin },
     ] = await Promise.all([
       supabase.from('user_configs').select('nome_assistente').eq('user_id', user.id).single(),
-      supabase.from('user_ambiti').select('ambito').eq('user_id', user.id).eq('attivo', true),
+      supabase.from('user_ambiti').select('ambito').eq('user_id', user.id),
       supabase.from('user_ambiti').select('onboarding_data').eq('user_id', user.id).eq('ambito', 'lavoro').single(),
       supabase.from('admins').select('user_id').eq('user_id', user.id).single(),
     ])
