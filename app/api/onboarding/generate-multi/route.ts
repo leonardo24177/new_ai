@@ -24,7 +24,6 @@ export async function POST(req: NextRequest) {
     const { nome, ambitiData, note_libere } = await req.json()
 
     // ─── 1. GENERA system_prompt_base NEUTRO ──────────────────────────────────
-    // Solo identità universale, nessun riferimento a professione o ambiti specifici
     const basePromptRequest = `Crea un'identità base breve per l'assistente AI di ${nome}.
 
 ISTRUZIONI CRITICHE:
@@ -112,13 +111,10 @@ Genera il blocco:`
     }
 
     // ─── 3. RISPOSTA ─────────────────────────────────────────────────────────
-    // Nota: system_prompt_base va in user_configs
-    //       ambiti_prompts[i] va in user_ambiti per ogni ambito (system_prompt_extra)
     return NextResponse.json({
-      system_prompt_base,   // ← identità universale neutra
-      ambiti_prompts,       // ← istruzioni specifiche per ambito
-      // Manteniamo anche system_prompt per retrocompatibilità (non usato dal nuovo OnboardingForm)
-      system_prompt: system_prompt_base,
+      system_prompt_base,   // → va in user_configs
+      ambiti_prompts,       // → va in user_ambiti (system_prompt_extra)
+      system_prompt: system_prompt_base, // retrocompatibilità
     })
 
   } catch (error) {
