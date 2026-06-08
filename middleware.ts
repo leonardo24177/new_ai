@@ -27,12 +27,13 @@ export async function middleware(request: NextRequest) {
 
   const { data: { user } } = await supabase.auth.getUser()
 
-  // Redirige al login se non autenticato e sta cercando di accedere all'app
-  if (!user && request.nextUrl.pathname.startsWith('/chat')) {
+  const protectedPaths = ['/chat', '/profile', '/admin']
+  const isProtected = protectedPaths.some(p => request.nextUrl.pathname.startsWith(p))
+
+  if (!user && isProtected) {
     return NextResponse.redirect(new URL('/login', request.url))
   }
 
-  // Redirige alla chat se già autenticato e sta cercando login/register
   if (user && (
     request.nextUrl.pathname === '/login' ||
     request.nextUrl.pathname === '/register'
@@ -44,5 +45,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/chat/:path*', '/login', '/register', '/onboarding', '/forgot-password', '/reset-password'],
+  matcher: ['/chat/:path*', '/profile/:path*', '/admin/:path*', '/login', '/register', '/onboarding', '/forgot-password', '/reset-password'],
 }

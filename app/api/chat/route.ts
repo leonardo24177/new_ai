@@ -116,6 +116,27 @@ export async function POST(req: NextRequest) {
       return new Response(JSON.stringify({ error: 'Non autenticato' }), { status: 401 })
     }
 
+    // Rate limiting: max 60 messaggi/ora per utente
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString()
+    const { data: userConvIds } = await supabase
+      .from('conversations')
+      .select('id')
+      .eq('user_id', user.id)
+
+    if (userConvIds && userConvIds.length > 0) {
+      const ids = userConvIds.map((c: { id: string }) => c.id)
+      const { count: msgCount } = await supabase
+        .from('messages')
+        .select('id', { count: 'exact', head: true })
+        .in('conversation_id', ids)
+        .eq('ruolo', 'user')
+        .gte('created_at', oneHourAgo)
+
+      if ((msgCount ?? 0) >= 60) {
+        return new Response(JSON.stringify({ error: 'Limite orario raggiunto. Riprova tra poco.' }), { status: 429 })
+      }
+    }
+
     const {
       messages,
       skill_slug,
@@ -225,20 +246,12 @@ export async function POST(req: NextRequest) {
 
     const driveFolders: DriveFolder[] = userConfig?.drive_folders || []
 
-    console.log('[Drive] drive_folders:', driveFolders)
-    console.log('[Drive] google_access_token dal client:', google_access_token ? 'presente' : 'assente')
-
     if (driveFolders.length > 0) {
-      // Usa prima il token dal client (fresco), poi quello salvato in Supabase
       const accessToken = (google_access_token as string | null) || await getGoogleAccessToken(supabase, user.id)
-
-      console.log('[Drive] accessToken finale:', accessToken ? 'presente' : 'assente')
 
       if (accessToken) {
         for (const folder of driveFolders) {
           const files = await searchDriveFolder(folder.folder_id, accessToken, 3)
-
-          console.log(`[Drive] Cartella "${folder.nome}": ${files.length} file trovati`)
 
           if (files.length === 0) continue
 
@@ -262,11 +275,7 @@ export async function POST(req: NextRequest) {
               `[Cartella Google Drive: "${folder.nome}" — ${folder.contesto}]\nFile disponibili (contenuto non leggibile):\n${fileNames}`
             )
           }
-
-          console.log(`[Drive] Cartella "${folder.nome}": ${driveContents.length} file letti`)
         }
-      } else {
-        console.warn('[Drive] Access token Google non disponibile per user:', user.id)
       }
     }
     // ─── fine Drive ───────────────────────────────────────────
@@ -302,8 +311,6 @@ export async function POST(req: NextRequest) {
       professione,
     })
 
-    console.log(`[Model Selector] ${reason}`)
-
     // 9. Salva messaggio utente
     if (conversation_id) {
       const lastMessage = messages[messages.length - 1]
@@ -328,7 +335,7 @@ export async function POST(req: NextRequest) {
         try {
           const anthropicStream = await client.messages.stream({
             model,
-            max_tokens: model === 'claude-opus-4-5' ? 4096 : 2048,
+            max_tokens: model === 'claude-opus-4-8' ? 8192 : 4096,
             system: systemPrompt,
             messages: messagesWithContext.map((m: { role: string; content: string }) => ({
               role: m.role as 'user' | 'assistant',
@@ -365,53 +372,6 @@ export async function POST(req: NextRequest) {
               costo_stimato: costoStimato,
             })
           }
-
-          // ─── AGGIORNAMENTO PROFILO ────────────────────────────────
-          // Se l'utente ha confermato con "sì/si/ok/yes/confermo" e il
-          // messaggio precedente dell'assistente chiedeva di aggiungere
-          // un'informazione al profilo, aggiorniamo il system prompt.
-          const lastUserMsg = messages[messages.length - 1]?.content?.trim().toLowerCase() || ''
-          const PAROLE_CONFERMA = ['sì', 'si', 'yes', 'ok', 'confermo', 'certo', 'esatto', 'vai', 'inserisci', 'aggiungi', 'salva', 'perfetto', 'corretto', 'giusto']
-          const isConferma = PAROLE_CONFERMA.some(p => lastUserMsg.includes(p))
-
-          if (isConferma) {
-            const prevMessages = messages.slice(0, -1)
-            const lastAssistantMsg = [...prevMessages].reverse().find(
-              (m: { role: string; content: string }) => m.role === 'assistant'
-            )?.content || ''
-
-            const chiedeAggiornamento = lastAssistantMsg.toLowerCase().includes('vuoi che aggiunga questa informazione al tuo profilo')
-
-            if (chiedeAggiornamento) {
-              // Estrae l'informazione dal messaggio utente che ha preceduto la domanda
-              const msgPrimaDellaConferma = prevMessages.slice(0, -1).reverse().find(
-                (m: { role: string; content: string }) => m.role === 'user'
-              )?.content || ''
-
-              if (msgPrimaDellaConferma) {
-                const { data: currentConfig } = await supabase
-                  .from('user_configs')
-                  .select('system_prompt_base')
-                  .eq('user_id', user.id)
-                  .single()
-
-                const currentPrompt = currentConfig?.system_prompt_base || ''
-                const updatedPrompt = `${currentPrompt}\n\n[Informazione aggiunta dall'utente]\n${msgPrimaDellaConferma}`
-
-                await supabase
-                  .from('user_configs')
-                  .update({ system_prompt_base: updatedPrompt })
-                  .eq('user_id', user.id)
-
-                console.log('[Profilo] System prompt aggiornato con:', msgPrimaDellaConferma)
-
-                controller.enqueue(encoder.encode(
-                  `data: ${JSON.stringify({ profile_updated: true })}\n\n`
-                ))
-              }
-            }
-          }
-          // ─── fine aggiornamento profilo ───────────────────────────
 
           controller.enqueue(encoder.encode(
             `data: ${JSON.stringify({

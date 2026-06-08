@@ -112,10 +112,10 @@ export function selectModel(input: ModelSelectorInput): ModelSelection {
   let reason: string
 
   if (score >= 70) {
-    model = 'claude-opus-4-5'
+    model = 'claude-opus-4-8'
     reason = `Opus (score: ${score}) — ${reasons.join(', ')}`
   } else if (score >= 25) {
-    model = 'claude-sonnet-4-5'
+    model = 'claude-sonnet-4-6'
     reason = `Sonnet (score: ${score}) — ${reasons.join(', ')}`
   } else {
     model = 'claude-haiku-4-5-20251001'
