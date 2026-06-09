@@ -14,8 +14,14 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Assistente AI",
-  description: "Il tuo assistente personale",
+  title: "Assistente AI — Il tuo assistente professionale personalizzato",
+  description: "Configura un assistente AI su misura per la tua professione. Fonti attendibili, ambiti separati, skill specializzate per avvocati, commercialisti, ingegneri e altri professionisti italiani.",
+  openGraph: {
+    title: "Assistente AI",
+    description: "Il tuo assistente AI personalizzato per lavoro, studio e uso personale.",
+    type: "website",
+    locale: "it_IT",
+  },
 };
 
 export default function RootLayout({
