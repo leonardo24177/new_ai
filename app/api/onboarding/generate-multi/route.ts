@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
+import { createClient } from '@/lib/supabase/server'
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! })
+
+function san(val: unknown, maxLen = 200): string {
+  if (typeof val !== 'string') return ''
+  return val.replace(/[\r\n]+/g, ' ').trim().slice(0, maxLen)
+}
 
 const REGOLA_FONTI_FORTE = `
 REGOLA ASSOLUTA — DA APPLICARE PRIMA DI OGNI RISPOSTA:
@@ -21,7 +27,13 @@ REGOLE VINCOLANTI:
 
 export async function POST(req: NextRequest) {
   try {
-    const { nome, ambitiData, note_libere } = await req.json()
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return NextResponse.json({ error: 'Non autenticato' }, { status: 401 })
+
+    const { nome: nomeRaw, ambitiData, note_libere: noteRaw } = await req.json()
+    const nome = san(nomeRaw, 100)
+    const note_libere = san(noteRaw, 500)
 
     // ─── 1. GENERA system_prompt_base NEUTRO ──────────────────────────────────
     const basePromptRequest = `Crea un'identità base breve per l'assistente AI di ${nome}.
@@ -66,25 +78,25 @@ Identità base:`
       if (ad.ambito === 'lavoro') {
         contestoAmbito = `
 Ambito: Lavoro professionale
-Professione: ${ad.professione}
-Utilizzo principale: ${ad.utilizzo}
-${specializzazioni ? `Specializzazioni: ${specializzazioni}` : ''}${specializzazioneCustom}
+Professione: ${san(ad.professione, 100)}
+Utilizzo principale: ${san(ad.utilizzo, 100)}
+${specializzazioni ? `Specializzazioni: ${san(specializzazioni, 200)}` : ''}${specializzazioneCustom}
 ${gerarchia ? `Gerarchia fonti attendibili:\n${gerarchia}` : ''}
 ${ad.fonti_escluse?.length > 0 ? `Fonti escluse: ${ad.fonti_escluse.join(', ')}` : ''}
-Citazione fonti: ${ad.citazione}
-In caso di conflitto tra fonti: ${ad.conflitto_fonti}
-Tono: ${ad.tono}`
+Citazione fonti: ${san(ad.citazione, 50)}
+In caso di conflitto tra fonti: ${san(ad.conflitto_fonti, 100)}
+Tono: ${san(ad.tono, 50)}`
       } else if (ad.ambito === 'studio') {
         contestoAmbito = `
 Ambito: Studio
-${ad.materia_studio ? `Materia / Corso: ${ad.materia_studio}` : ''}
-Livello: ${ad.livello_studio}
-Tono: ${ad.tono}`
+${ad.materia_studio ? `Materia / Corso: ${san(ad.materia_studio, 100)}` : ''}
+Livello: ${san(ad.livello_studio, 50)}
+Tono: ${san(ad.tono, 50)}`
       } else if (ad.ambito === 'personale') {
         contestoAmbito = `
 Ambito: Uso personale
-Uso principale: ${ad.uso_personale}
-Tono: ${ad.tono}`
+Uso principale: ${san(ad.uso_personale, 100)}
+Tono: ${san(ad.tono, 50)}`
       }
 
       const prompt = `Genera un blocco di istruzioni specifico per questo ambito di utilizzo dell'assistente AI per l'utente ${nome}.

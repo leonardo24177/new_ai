@@ -6,6 +6,11 @@ const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
 })
 
+function san(val: unknown, maxLen = 200): string {
+  if (typeof val !== 'string') return ''
+  return val.replace(/[\r\n]+/g, ' ').trim().slice(0, maxLen)
+}
+
 export async function POST(req: NextRequest) {
   try {
     const supabase = await createClient()
@@ -37,17 +42,17 @@ export async function POST(req: NextRequest) {
     const prompt = `Sei un esperto di prompt engineering. Genera un system prompt professionale e preciso per un assistente AI personalizzato.
 
 DATI DELL'UTENTE:
-- Nome: ${nome}
-- Ambito: ${ambito}
-${professione ? `- Professione: ${professione}` : ''}
-${utilizzo ? `- Utilizzo principale: ${utilizzo}` : ''}
-${specializzazione ? `- Specializzazione: ${specializzazione}` : ''}
+- Nome: ${san(nome, 100)}
+- Ambito: ${san(ambito, 50)}
+${professione ? `- Professione: ${san(professione, 100)}` : ''}
+${utilizzo ? `- Utilizzo principale: ${san(utilizzo, 100)}` : ''}
+${specializzazione ? `- Specializzazione: ${san(specializzazione, 200)}` : ''}
 ${gerarchia ? `- Gerarchia fonti attendibili:\n${gerarchia}` : ''}
 ${fonti_escluse?.length > 0 ? `- Fonti escluse: ${fonti_escluse.join(', ')}` : ''}
-${citazione ? `- Citazione fonti: ${citazione}` : ''}
-${conflitto_fonti ? `- In caso di conflitto tra fonti: ${conflitto_fonti}` : ''}
-- Tono: ${tono}
-${note_libere ? `- Note aggiuntive: ${note_libere}` : ''}
+${citazione ? `- Citazione fonti: ${san(citazione, 50)}` : ''}
+${conflitto_fonti ? `- In caso di conflitto tra fonti: ${san(conflitto_fonti, 100)}` : ''}
+- Tono: ${san(tono, 50)}
+${note_libere ? `- Note aggiuntive: ${san(note_libere, 500)}` : ''}
 
 ISTRUZIONI PER LA GENERAZIONE:
 1. Il system prompt deve essere in italiano
