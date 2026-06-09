@@ -161,7 +161,7 @@ export default function ChatPage() {
   const [fileContexts, setFileContexts] = useState<FileContext[]>([])
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [skills, setSkills] = useState<{ id: string; slug: string; label: string; extra_sys: string; categoria: string | null }[]>([])
+  const [skills, setSkills] = useState<{ id: string; slug: string; label: string; extra_sys: string; categoria: string | null; professione: string | null }[]>([])
   const [activeSkills, setActiveSkills] = useState<string[]>([])
   const [professione, setProfessione] = useState<string>('')
   const [showSkills, setShowSkills] = useState(false)
@@ -255,19 +255,24 @@ export default function ChatPage() {
   function buildIntroMessage(
     nome: string,
     professione: string,
-    skillsCaricate: Array<{ label: string; categoria: string | null }>
+    skillsCaricate: Array<{ label: string; categoria: string | null; professione: string | null }>
   ): string {
     const profLabel = professione
       ? professione.charAt(0).toUpperCase() + professione.slice(1).replace(/_/g, ' ')
       : ''
 
+    // Mostra solo le skill specifiche della professione dell'utente
+    const skillsDaMostrare = professione
+      ? skillsCaricate.filter(s => s.professione === professione)
+      : skillsCaricate
+
     let msg = `Ciao! Sono **${nome}**`
     if (profLabel) msg += `, il tuo assistente AI per **${profLabel}**`
     msg += '.\n\n'
 
-    if (skillsCaricate.length > 0) {
+    if (skillsDaMostrare.length > 0) {
       const byCategoria: Record<string, string[]> = {}
-      skillsCaricate.forEach(s => {
+      skillsDaMostrare.forEach(s => {
         const cat = s.categoria || 'Generali'
         if (!byCategoria[cat]) byCategoria[cat] = []
         byCategoria[cat].push(s.label)
