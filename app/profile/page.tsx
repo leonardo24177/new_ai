@@ -235,7 +235,7 @@ export default function ProfilePage() {
       for (let i = 0; i < ambitiData.length; i++) {
         await supabase.from('user_ambiti').upsert({
           user_id: user.id, ambito: ambitiData[i].ambito,
-          onboarding_data: ambitiData[i], system_prompt_extra: json.ambiti_prompts?.[i] || '',
+          onboarding_data: ambitiData[i], system_prompt_extra: json.ambiti_prompts?.[i] || '', attivo: true,
         }, { onConflict: 'user_id,ambito' })
       }
       setSystemPrompt(json.system_prompt)

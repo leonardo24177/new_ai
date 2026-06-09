@@ -252,7 +252,7 @@ export default function OnboardingForm() {
       for (let i = 0; i < ambitiData.length; i++) {
         const ad = ambitiData[i]
         await supabase.from('user_ambiti').upsert(
-          { user_id: user.id, ambito: ad.ambito, onboarding_data: ad, system_prompt_extra: json.ambiti_prompts?.[i] || '' },
+          { user_id: user.id, ambito: ad.ambito, onboarding_data: ad, system_prompt_extra: json.ambiti_prompts?.[i] || '', attivo: true },
           { onConflict: 'user_id,ambito' }
         )
       }
