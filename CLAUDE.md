@@ -55,7 +55,24 @@ lib/
   model-selector.ts         ← selezione modello per complessità
   model-pricing.ts          ← calcolo costi, label, colori modelli
   onboarding/config.ts      ← professioni, utilizzi, specializzazioni, fonti
-middleware.ts               ← protegge /chat, /profile, /admin → redirect /login
+proxy.ts                    ← protegge /chat, /profile, /admin → redirect /login
+  app/
+    in-attesa/page.tsx        ← pagina attesa approvazione admin
+    privacy/page.tsx          ← Privacy Policy GDPR
+    termini/page.tsx          ← Termini di Servizio
+    not-found.tsx             ← pagina 404
+    global-error.tsx          ← error boundary React con Sentry.captureException
+    sentry-example-page/      ← pagina test Sentry (solo sviluppo)
+  api/
+    account/
+      delete/route.ts         ← DELETE account + tutti i dati utente (GDPR)
+    admin/
+      users/route.ts          ← PATCH aggiunge approvazione utente
+instrumentation.ts            ← init Sentry server-side (caricato da Next.js automaticamente)
+instrumentation.client.ts     ← init Sentry client-side (caricato da Next.js automaticamente)
+sentry.client.config.ts       ← config Sentry client (usato da withSentryConfig nel build)
+sentry.server.config.ts       ← config Sentry server
+sentry.edge.config.ts         ← config Sentry edge runtime
 ```
 
 ## Schema DB Supabase
@@ -83,6 +100,19 @@ skills            id, slug (unique), label, extra_sys, categoria,
 admins            user_id  ← inserimento manuale per abilitare accesso admin
 ```
 
+## Approvazione utenti
+
+- Gli utenti devono essere approvati da un admin prima di accedere a `/chat` e `/profile`.
+- L'approvazione è salvata in `auth.users.app_metadata.approvato = true` (non `user_metadata` — quello è modificabile dal client).
+- Il proxy legge `user.app_metadata?.approvato` e reindirizza su `/in-attesa` se non approvato.
+- L'admin approva/revoca via `PATCH /api/admin/users` → `supabase.auth.admin.updateUserById(id, { app_metadata: { approvato } })`.
+- `/admin`, `/onboarding`, `/in-attesa` sono sempre accessibili agli utenti autenticati (non bloccati dall'approval check).
+
+## Middleware (proxy.ts)
+
+- In Next.js 16 il file si chiama **`proxy.ts`** (non `middleware.ts`) e la funzione esportata si chiama **`proxy`** (non `middleware`). Rinominarla causerà errore "Proxy is missing expected function export name".
+- Il matcher include `/in-attesa` per gestire il redirect degli utenti non approvati.
+
 ## Variabili d'ambiente richieste
 
 ```
@@ -91,6 +121,9 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY
 SUPABASE_SERVICE_ROLE_KEY       ← solo server, non esporre al client
 ANTHROPIC_API_KEY               ← solo server
 NEXT_PUBLIC_GOOGLE_CLIENT_ID    ← Google OAuth per Drive picker
+SENTRY_ORG                      ← nome organizzazione Sentry (leonardo-stancati)
+SENTRY_PROJECT                  ← nome progetto Sentry (javascript-nextjs)
+SENTRY_AUTH_TOKEN               ← token per upload source maps in build
 ```
 
 ## Convenzioni di codice
@@ -104,6 +137,9 @@ NEXT_PUBLIC_GOOGLE_CLIENT_ID    ← Google OAuth per Drive picker
 - **File**: il testo estratto viene troncato a 50.000 caratteri al momento dell'upload; in chat il contesto per file è troncato a 30.000.
 - **Lingua**: tutta la UI, i messaggi di errore e i commenti sono in italiano.
 - **Niente console.log** in produzione — usare solo `console.error` per errori reali.
+- **Skills per ambito**: in chat le skill visibili sono filtrate per `ambitoAttivo` — lavoro vede skill della propria professione + skill globali (`professione = null`); studio e personale vedono solo skill globali. Non mostrare tutte le skill indifferentemente dall'ambito.
+- **Sentry**: inizializzato via `instrumentation.ts` (server) e `instrumentation.client.ts` (client) — questi file sono caricati automaticamente da Next.js. Non usare `tunnelRoute` in `withSentryConfig` (incompatibile con Turbopack). Il DSN è hardcoded nei file di istrumentazione perché le env var non sono disponibili in quel contesto con Turbopack.
+- **RLS Supabase**: le policy sono in `supabase/rls/policies.sql` — script idempotente con `DROP POLICY IF EXISTS` prima di ogni `CREATE POLICY`. Eseguire nel SQL Editor di Supabase dopo ogni modifica allo schema.
 
 ## Cosa NON fare
 
@@ -111,3 +147,5 @@ NEXT_PUBLIC_GOOGLE_CLIENT_ID    ← Google OAuth per Drive picker
 - Non aggiungere logica di auto-modifica del `system_prompt_base` a partire da messaggi chat (rimossa perché vulnerabile a prompt injection).
 - Non usare la `SUPABASE_SERVICE_ROLE_KEY` in Client Components o in route non-admin.
 - Non rimuovere il rate limiting da `/api/chat` senza aggiungere un'alternativa.
+- Non rinominare `proxy.ts` in `middleware.ts` — in Next.js 16 il nome è cambiato.
+- Non salvare `approvato` in `user_metadata` — è modificabile dal client. Usare sempre `app_metadata` via service role.
