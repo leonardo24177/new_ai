@@ -193,6 +193,7 @@ export default function ChatPage() {
   const recognitionRef = useRef<any>(null)
   const speechSynthRef = useRef<SpeechSynthesisUtterance | null>(null)
 
+  const [showMicHelp, setShowMicHelp] = useState(false)
   const [shareModalOpen, setShareModalOpen] = useState(false)
   const [shareConvId, setShareConvId] = useState<string | null>(null)
   const [shareLoading, setShareLoading] = useState(false)
@@ -599,7 +600,7 @@ export default function ChatPage() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     recognition.onerror = (e: any) => {
       setIsRecording(false)
-      if (e.error === 'not-allowed') toast.error('Permesso microfono negato — abilitalo nelle impostazioni del browser')
+      if (e.error === 'not-allowed') setShowMicHelp(true)
       else if (e.error !== 'aborted' && e.error !== 'no-speech') toast.error('Errore microfono')
     }
     recognition.onend = () => setIsRecording(false)
@@ -702,6 +703,52 @@ export default function ChatPage() {
           <div className="bg-white rounded-2xl border-2 border-dashed border-gray-400 px-10 py-8 text-center shadow-xl">
             <p className="text-2xl mb-2">📎</p>
             <p className="text-sm font-semibold text-gray-700">Rilascia per allegare</p>
+          </div>
+        </div>
+      )}
+
+      {/* Mic permission help */}
+      {showMicHelp && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={() => setShowMicHelp(false)}>
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-xl p-5 w-full max-w-sm" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-gray-900">Permesso microfono negato</h3>
+              <button onClick={() => setShowMicHelp(false)} className="text-gray-400 active:text-gray-600 text-lg leading-none">✕</button>
+            </div>
+            <p className="text-xs text-gray-500 mb-4">Il browser ha bloccato l'accesso al microfono. Segui questi passi per abilitarlo:</p>
+            {(() => {
+              const ua = typeof navigator !== 'undefined' ? navigator.userAgent : ''
+              const isIOS = /iPhone|iPad|iPod/i.test(ua)
+              const isAndroid = /Android/i.test(ua)
+              if (isIOS) return (
+                <ol className="text-xs text-gray-700 space-y-2 list-decimal list-inside">
+                  <li>Apri <strong>Impostazioni iPhone</strong></li>
+                  <li>Scorri fino a <strong>Safari</strong> (o al tuo browser)</li>
+                  <li>Tocca <strong>Microfono</strong> → seleziona <strong>Consenti</strong></li>
+                  <li>Torna qui e <strong>ricarica la pagina</strong></li>
+                </ol>
+              )
+              if (isAndroid) return (
+                <ol className="text-xs text-gray-700 space-y-2 list-decimal list-inside">
+                  <li>Tocca l'icona <strong>lucchetto 🔒</strong> nella barra dell'indirizzo</li>
+                  <li>Tocca <strong>Autorizzazioni</strong> → <strong>Microfono</strong></li>
+                  <li>Seleziona <strong>Consenti</strong></li>
+                  <li><strong>Ricarica la pagina</strong></li>
+                </ol>
+              )
+              return (
+                <ol className="text-xs text-gray-700 space-y-2 list-decimal list-inside">
+                  <li>Clicca l'icona <strong>lucchetto 🔒</strong> nella barra dell'indirizzo</li>
+                  <li>Clicca <strong>Microfono</strong> → seleziona <strong>Consenti</strong></li>
+                  <li><strong>Ricarica la pagina</strong></li>
+                </ol>
+              )
+            })()}
+            <button
+              onClick={() => window.location.reload()}
+              className="mt-5 w-full bg-gray-900 text-white text-sm font-medium py-2.5 rounded-xl active:opacity-80 transition-opacity">
+              Ricarica la pagina
+            </button>
           </div>
         </div>
       )}
