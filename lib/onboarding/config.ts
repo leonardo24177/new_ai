@@ -9,7 +9,7 @@ export type Professione =
   | 'ingegnere' | 'architetto' | 'geometra'
   | 'insegnante' | 'professore_universitario'
   | 'imprenditore' | 'manager' | 'libero_professionista'
-  | 'giornalista' | 'ricercatore' | 'altro'
+  | 'giornalista' | 'editore' | 'ricercatore' | 'altro'
 
 export interface Fonte {
   id: string
@@ -175,6 +175,13 @@ export const UTILIZZI: Record<Professione, { value: string; label: string }[]> =
     { value: 'rassegna_stampa', label: 'Rassegna stampa' },
     { value: 'fact_checking', label: 'Fact-checking' },
   ],
+  editore: [
+    { value: 'editing', label: 'Editing e revisione testi' },
+    { value: 'comunicazione_editoriale', label: 'Schede, sinossi e testi marketing' },
+    { value: 'contratti_editoriali', label: 'Contratti con autori e agenti' },
+    { value: 'scouting', label: 'Valutazione manoscritti' },
+    { value: 'marketing_editoriale', label: 'Marketing e promozione libri' },
+  ],
   ricercatore: [
     { value: 'letteratura', label: 'Revisione letteratura scientifica' },
     { value: 'pubblicazioni', label: 'Redazione pubblicazioni' },
@@ -332,6 +339,14 @@ export const SPECIALIZZAZIONI: Record<string, { value: string; label: string }[]
     { value: 'scienza', label: 'Scienza e tecnologia' },
     { value: 'esteri', label: 'Esteri' },
     { value: 'investigativa', label: 'Giornalismo investigativo' },
+  ],
+  'editore_editing': [
+    { value: 'narrativa', label: 'Narrativa' },
+    { value: 'saggistica', label: 'Saggistica' },
+    { value: 'ragazzi', label: 'Libri per bambini e ragazzi' },
+    { value: 'scolastica', label: 'Editoria scolastica' },
+    { value: 'scientifica', label: 'Testi scientifici e tecnici' },
+    { value: 'fumetto', label: 'Fumetto e graphic novel' },
   ],
   'ricercatore_letteratura': [
     { value: 'medicina', label: 'Medicina e scienze biologiche' },
@@ -606,6 +621,14 @@ export const FONTI_DEFAULT: Record<string, Fonte[]> = {
     { id: 'databases', label: 'Database giornalistici', descrizione: 'Factiva, LexisNexis' },
     { id: 'carta_doveri', label: 'Carta dei Doveri del Giornalista', descrizione: 'Deontologia professionale' },
   ],
+  'editore': [
+    { id: 'treccani', label: 'Treccani', descrizione: 'Enciclopedia e vocabolario della lingua italiana' },
+    { id: 'crusca', label: 'Accademia della Crusca', descrizione: 'Autorità normativa sulla lingua italiana' },
+    { id: 'diritto_autore', label: 'L. 633/1941 — Diritto d\'autore', descrizione: 'Normativa italiana sul copyright' },
+    { id: 'aie', label: 'AIE — Associazione Italiana Editori', descrizione: 'Linee guida e dati di settore' },
+    { id: 'isbn', label: 'Agenzia ISBN italiana', descrizione: 'Catalogazione editoriale nazionale' },
+    { id: 'bni', label: 'BNI — Biblioteca Nazionale Italiana', descrizione: 'Catalogo nazionale delle pubblicazioni' },
+  ],
   'ricercatore_letteratura': [
     { id: 'pubmed', label: 'PubMed / MEDLINE', descrizione: 'Letteratura biomedica' },
     { id: 'scopus', label: 'Scopus / Web of Science', descrizione: 'Database multidisciplinare' },
@@ -675,5 +698,6 @@ export const PROFESSIONI_LIST = [
   { value: 'manager', label: 'Manager / Dirigente', emoji: '📈', categoria: 'Business' },
   { value: 'libero_professionista', label: 'Libero professionista', emoji: '🧩', categoria: 'Business' },
   { value: 'giornalista', label: 'Giornalista', emoji: '📰', categoria: 'Comunicazione' },
+  { value: 'editore', label: 'Editore / Editor', emoji: '📖', categoria: 'Comunicazione' },
   { value: 'altro', label: 'Altro', emoji: '👤', categoria: 'Altro' },
 ]
