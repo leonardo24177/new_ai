@@ -114,7 +114,7 @@ export async function POST(req: NextRequest) {
         if (testo_estratto.length < 100 && file.size <= 10 * 1024 * 1024) {
           try {
             const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-            const risposta = await anthropic.messages.create({
+            const ocrPromise = anthropic.messages.create({
               model: 'claude-haiku-4-5-20251001',
               max_tokens: 4096,
               messages: [{
@@ -136,9 +136,11 @@ export async function POST(req: NextRequest) {
                 ],
               }],
             })
-            const blocco = risposta.content[0]
-            if (blocco.type === 'text') {
-              testo_estratto = blocco.text.slice(0, 50000)
+            // Timeout 20s per non superare il limite Vercel di 30s
+            const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 20000))
+            const risposta = await Promise.race([ocrPromise, timeout])
+            if (risposta && risposta.content[0].type === 'text') {
+              testo_estratto = risposta.content[0].text.slice(0, 50000)
             }
           } catch (ocrError) {
             console.error('Errore OCR Claude:', ocrError)

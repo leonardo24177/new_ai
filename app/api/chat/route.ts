@@ -228,12 +228,14 @@ export async function POST(req: NextRequest) {
     const imageBlocks: ImageBlock[] = []
 
     const SUPPORTED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+    const MAX_IMAGE_BYTES = 4 * 1024 * 1024 // 4MB per immagine (base64 ~5.3MB → sotto limite API)
 
     async function fetchImageBlock(storagePath: string, mimeType: string): Promise<ImageBlock | null> {
       if (!SUPPORTED_IMAGE_TYPES.includes(mimeType)) return null
       try {
         const { data: blob } = await supabase.storage.from('user-files').download(storagePath)
         if (!blob) return null
+        if (blob.size > MAX_IMAGE_BYTES) return null // scarta immagini troppo grandi
         const arrayBuffer = await blob.arrayBuffer()
         const base64 = Buffer.from(arrayBuffer).toString('base64')
         return { type: 'image', source: { type: 'base64', media_type: mimeType, data: base64 } }
@@ -243,15 +245,19 @@ export async function POST(req: NextRequest) {
     }
 
     if (profileFiles && profileFiles.length > 0) {
-      for (const f of profileFiles) {
+      // Separa immagini e file testuali
+      const profileImages = profileFiles.filter(f => f.mime_type?.startsWith('image/') && f.storage_path)
+      const profileTextFiles = profileFiles.filter(f => !f.mime_type?.startsWith('image/'))
+
+      // Download immagini in parallelo (max 5)
+      const imageResults = await Promise.all(
+        profileImages.slice(0, 5).map(f => fetchImageBlock(f.storage_path, f.mime_type))
+      )
+      imageBlocks.push(...imageResults.filter((b): b is ImageBlock => b !== null))
+
+      for (const f of profileTextFiles) {
         const ambitoTag = f.ambito ? ` [${f.ambito}]` : ''
-        if (f.mime_type?.startsWith('image/') && f.storage_path) {
-          // Immagini di profilo → blocchi visivi
-          if (imageBlocks.length < 5) {
-            const block = await fetchImageBlock(f.storage_path, f.mime_type)
-            if (block) imageBlocks.push(block)
-          }
-        } else if (f.testo_contenuto && f.testo_contenuto.trim().length > 0) {
+        if (f.testo_contenuto && f.testo_contenuto.trim().length > 0) {
           const tipoLabel = f.tipo === 'link' ? 'Link' : 'File'
           fileTexts.push(`[${tipoLabel} verificato${ambitoTag}: ${f.nome}]\n${f.testo_contenuto.slice(0, 30000)}`)
         } else if (f.tipo === 'link' && f.url) {
@@ -306,14 +312,19 @@ export async function POST(req: NextRequest) {
     // ─── fine Drive ───────────────────────────────────────────
 
     if (file_contexts && file_contexts.length > 0) {
-      for (const fc of file_contexts) {
-        if (fc.mime_type?.startsWith('image/') && fc.storage_path) {
-          // Immagini allegate in chat → blocchi visivi
-          if (imageBlocks.length < 5) {
-            const block = await fetchImageBlock(fc.storage_path, fc.mime_type)
-            if (block) imageBlocks.push(block)
-          }
-        } else if (fc.testo) {
+      const chatImages = file_contexts.filter((fc: { mime_type?: string; storage_path?: string }) => fc.mime_type?.startsWith('image/') && fc.storage_path)
+      const chatTextFiles = file_contexts.filter((fc: { mime_type?: string; storage_path?: string }) => !fc.mime_type?.startsWith('image/'))
+
+      const remainingSlots = 5 - imageBlocks.length
+      if (remainingSlots > 0 && chatImages.length > 0) {
+        const chatImageResults = await Promise.all(
+          chatImages.slice(0, remainingSlots).map((fc: { storage_path: string; mime_type: string }) => fetchImageBlock(fc.storage_path, fc.mime_type))
+        )
+        imageBlocks.push(...chatImageResults.filter((b): b is ImageBlock => b !== null))
+      }
+
+      for (const fc of chatTextFiles) {
+        if (fc.testo) {
           fileTexts.push(`[File allegato: ${fc.nome}]\n${fc.testo}`)
         } else if (fc.nome) {
           fileTexts.push(`[File allegato: ${fc.nome}]`)
