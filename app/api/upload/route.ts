@@ -25,6 +25,7 @@ export async function POST(req: NextRequest) {
       'application/pdf',
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.ms-excel',
       'application/vnd.openxmlformats-officedocument.presentationml.presentation',
       'application/msword',
       'application/json',
@@ -145,7 +146,10 @@ export async function POST(req: NextRequest) {
         const result = await mammoth.extractRawText({ buffer })
         testo_estratto = result.value?.slice(0, 50000) || ''
       }
-      else if (file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') {
+      else if (
+        file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+        file.type === 'application/vnd.ms-excel'
+      ) {
         const XLSX = await import('xlsx')
         const workbook = XLSX.read(buffer, { type: 'buffer' })
         const sheets = workbook.SheetNames.map((name: string) => {
