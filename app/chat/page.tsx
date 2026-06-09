@@ -443,15 +443,21 @@ export default function ChatPage() {
     if (!currentConversationId) {
       const supabase = createClient()
       const { data: { user } } = await supabase.auth.getUser()
-      if (user) {
-        const { data: conv } = await supabase.from('conversations').insert({ user_id: user.id }).select('id').single()
-        if (conv) {
-          currentConversationId = conv.id
-          setConversationId(conv.id)
-          isFirstMessage.current = true
-          loadConversations()
-        }
+      if (!user) {
+        toast.error('Sessione scaduta — effettua di nuovo il login')
+        setLoading(false)
+        return
       }
+      const { data: conv } = await supabase.from('conversations').insert({ user_id: user.id }).select('id').single()
+      if (!conv) {
+        toast.error('Errore nella creazione della conversazione. Riprova.')
+        setLoading(false)
+        return
+      }
+      currentConversationId = conv.id
+      setConversationId(conv.id)
+      isFirstMessage.current = true
+      loadConversations()
     }
 
     if (isFirstMessage.current && currentConversationId) {
