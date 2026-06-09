@@ -117,7 +117,10 @@ export async function POST(req: NextRequest) {
     }
 
     // Rate limiting: max 60 messaggi/ora per utente
+    const COSTO_MENSILE_MAX = 5.00 // $5/mese per utente
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString()
+    const primoDelMese = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString()
+
     const { data: userConvIds } = await supabase
       .from('conversations')
       .select('id')
@@ -125,15 +128,28 @@ export async function POST(req: NextRequest) {
 
     if (userConvIds && userConvIds.length > 0) {
       const ids = userConvIds.map((c: { id: string }) => c.id)
-      const { count: msgCount } = await supabase
-        .from('messages')
-        .select('id', { count: 'exact', head: true })
-        .in('conversation_id', ids)
-        .eq('ruolo', 'user')
-        .gte('created_at', oneHourAgo)
+
+      const [{ count: msgCount }, { data: costoMese }] = await Promise.all([
+        supabase
+          .from('messages')
+          .select('id', { count: 'exact', head: true })
+          .in('conversation_id', ids)
+          .eq('ruolo', 'user')
+          .gte('created_at', oneHourAgo),
+        supabase
+          .from('messages')
+          .select('costo_stimato')
+          .in('conversation_id', ids)
+          .gte('created_at', primoDelMese),
+      ])
 
       if ((msgCount ?? 0) >= 60) {
         return new Response(JSON.stringify({ error: 'Limite orario raggiunto. Riprova tra poco.' }), { status: 429 })
+      }
+
+      const totaleSpeso = (costoMese || []).reduce((sum: number, m: { costo_stimato: number | null }) => sum + (m.costo_stimato || 0), 0)
+      if (totaleSpeso >= COSTO_MENSILE_MAX) {
+        return new Response(JSON.stringify({ error: 'Limite mensile raggiunto. Contatta il supporto per aumentare il tuo piano.' }), { status: 429 })
       }
     }
 
