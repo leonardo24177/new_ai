@@ -42,6 +42,15 @@ interface UserFile {
   ambito: string | null
 }
 
+interface ShareLink {
+  share_token: string
+  conversation_id: string
+  titolo: string
+  expires_at: string | null
+  has_password: boolean
+  created_at: string
+}
+
 // File/cartelle da ignorare nell'upload cartella
 const IGNORA = ['node_modules', '.git', '.next', 'dist', 'build', '.cache', '__pycache__', '.DS_Store', 'Thumbs.db']
 
@@ -123,7 +132,9 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [folderProgress, setFolderProgress] = useState<FolderProgress | null>(null)
-  const [activeTab, setActiveTab] = useState<'ambiti' | 'file' | 'drive' | 'prompt'>('ambiti')
+  const [activeTab, setActiveTab] = useState<'ambiti' | 'file' | 'drive' | 'prompt' | 'link'>('ambiti')
+  const [shares, setShares] = useState<ShareLink[]>([])
+  const [sharesLoading, setSharesLoading] = useState(false)
   const [activeAmbito, setActiveAmbito] = useState<Ambito | null>(null)
   const [nomeUtente, setNomeUtente] = useState('')
   const [ambitiData, setAmbitiData] = useState<AmbitoData[]>([])
@@ -172,6 +183,31 @@ export default function ProfilePage() {
     if (files) setProfileFiles(files)
 
     setLoading(false)
+  }
+
+  async function loadShares() {
+    setSharesLoading(true)
+    try {
+      const res = await fetch('/api/conversations/shares')
+      if (res.ok) setShares(await res.json())
+    } finally {
+      setSharesLoading(false)
+    }
+  }
+
+  async function revokeShare(conversationId: string) {
+    await fetch(`/api/conversations/${conversationId}/share`, { method: 'DELETE' })
+    setShares(prev => prev.filter(s => s.conversation_id !== conversationId))
+    setSuccessMsg('Link revocato')
+    setTimeout(() => setSuccessMsg(''), 2000)
+  }
+
+  function formatExpiry(expiresAt: string | null): string {
+    if (!expiresAt) return 'Nessuna scadenza'
+    const d = new Date(expiresAt)
+    const now = new Date()
+    if (d < now) return 'Scaduto'
+    return `Scade ${d.toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' })}`
   }
 
   function updateAmbitoField(ambito: Ambito, field: keyof AmbitoData, value: unknown) {
@@ -424,9 +460,14 @@ export default function ProfilePage() {
             { key: 'ambiti', label: 'Ambiti' },
             { key: 'file', label: 'File' },
             { key: 'drive', label: '🗂 Drive' },
-            { key: 'prompt', label: 'System Prompt' },
+            { key: 'prompt', label: 'Prompt' },
+            { key: 'link', label: '🔗 Link' },
           ].map(tab => (
-            <button key={tab.key} onClick={() => setActiveTab(tab.key as 'ambiti' | 'file' | 'drive' | 'prompt')}
+            <button key={tab.key}
+              onClick={() => {
+                setActiveTab(tab.key as 'ambiti' | 'file' | 'drive' | 'prompt' | 'link')
+                if (tab.key === 'link') loadShares()
+              }}
               className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
                 activeTab === tab.key ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'
               }`}>
@@ -881,6 +922,75 @@ export default function ProfilePage() {
               className="mt-1 w-full bg-gray-900 text-white rounded-xl py-3.5 text-sm font-medium active:bg-gray-800 disabled:opacity-40 transition-colors">
               {saving ? 'Salvo...' : 'Salva prompt base'}
             </button>
+          </div>
+        )}
+
+        {/* TAB LINK CONDIVISI */}
+        {activeTab === 'link' && (
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-sm font-semibold text-gray-900">Link condivisi</h2>
+                <p className="text-xs text-gray-400 mt-0.5">Conversazioni con link pubblico attivo</p>
+              </div>
+              <button onClick={loadShares} disabled={sharesLoading}
+                className="text-xs text-gray-400 border border-gray-200 px-3 py-2 rounded-xl active:bg-gray-50 disabled:opacity-40">
+                {sharesLoading ? '...' : '↻ Aggiorna'}
+              </button>
+            </div>
+
+            {sharesLoading ? (
+              <div className="bg-white rounded-2xl border border-gray-200 p-8 text-center">
+                <p className="text-gray-400 text-sm">Caricamento...</p>
+              </div>
+            ) : shares.length === 0 ? (
+              <div className="bg-white rounded-2xl border border-gray-200 p-8 text-center">
+                <p className="text-gray-400 text-sm">Nessun link condiviso attivo</p>
+                <p className="text-gray-300 text-xs mt-1">Condividi una conversazione dalla chat per vederla qui</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {shares.map(share => {
+                  const url = `${window.location.origin}/conv/${share.share_token}`
+                  return (
+                    <div key={share.share_token} className="bg-white rounded-2xl border border-gray-200 p-4">
+                      <div className="flex items-start justify-between gap-3 mb-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-gray-900 truncate">{share.titolo}</p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className={`text-xs ${new Date(share.expires_at || '9999') < new Date() ? 'text-red-500' : 'text-gray-400'}`}>
+                              {formatExpiry(share.expires_at)}
+                            </span>
+                            {share.has_password && (
+                              <span className="text-xs text-gray-400">• Password</span>
+                            )}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => revokeShare(share.conversation_id)}
+                          className="flex-shrink-0 text-xs text-red-500 border border-red-200 px-3 py-1.5 rounded-lg active:bg-red-50 transition-colors">
+                          Revoca
+                        </button>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <p className="flex-1 text-xs text-gray-400 font-mono truncate bg-gray-50 rounded-lg px-3 py-2">
+                          {url}
+                        </p>
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(url)
+                            setSuccessMsg('Link copiato!')
+                            setTimeout(() => setSuccessMsg(''), 2000)
+                          }}
+                          className="flex-shrink-0 text-xs text-gray-600 border border-gray-200 px-3 py-2 rounded-lg active:bg-gray-50 transition-colors">
+                          Copia
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </div>
         )}
 
