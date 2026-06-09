@@ -44,6 +44,11 @@ app/
     admin/
       users/route.ts        ← GET/DELETE utenti (richiede tabella admins)
       stats/route.ts        ← GET statistiche costi per modello/utente/giorno
+    conversations/
+      [id]/share/route.ts   ← GET/POST/DELETE link condivisione (richiede auth)
+    conv/
+      [token]/route.ts      ← GET/POST lettura conversazione condivisa (pubblico, usa service role)
+  conv/[token]/page.tsx     ← pagina read-only pubblica conversazione condivisa
   chat/page.tsx             ← MAIN APP — chat multiambito con streaming
   profile/page.tsx          ← gestione ambiti, file, Google Drive, system prompt
   admin/page.tsx            ← pannello admin (utenti, skill, stats costi)
@@ -103,6 +108,10 @@ skills            id, slug (unique), label, extra_sys, categoria,
                   pubblica, professione
 
 admins            user_id  ← inserimento manuale per abilitare accesso admin
+
+conversation_shares  id, conversation_id (FK conversations ON DELETE CASCADE),
+                     owner_user_id, share_token (unique), password_hash (SHA-256, nullable),
+                     expires_at (nullable = forever), created_at
 ```
 
 ## Approvazione utenti
@@ -158,6 +167,7 @@ SENTRY_AUTH_TOKEN               ← token per upload source maps in build
 - **Email transazionali**: Resend via SMTP configurato su Supabase Auth. Welcome email inviata da `/api/email/welcome` dopo la registrazione. Richiede `RESEND_API_KEY` e `RESEND_FROM_EMAIL`.
 - **Favicon**: generata dinamicamente da `app/icon.tsx` via `ImageResponse` (Next.js App Router).
 - **Google Drive token**: recuperato sempre server-side da `user_configs.google_drive_token` — mai passato dal client. Il controllo scadenza client-side in `chat/page.tsx` legge `user_configs` (non `session.provider_token` che è un token diverso). GIS implicit flow non emette refresh token — alla scadenza (~1h) l'utente deve riconnettere dal profilo.
+- **Sharing conversazioni**: la tabella `conversation_shares` collega una conversazione a un `share_token` UUID. La route pubblica `/api/conv/[token]` usa la `service_role` key (non auth) per leggere i dati. La password è un SHA-256 hex confrontato server-side. La pagina `/conv/[token]` è fuori dal matcher di `proxy.ts` — accessibile senza login. La gestione share (GET/POST/DELETE) è in `/api/conversations/[id]/share` e richiede auth. Prima di usare, eseguire `supabase/rls/shares_migration.sql` nel SQL Editor, poi rieseguire `policies.sql`.
 - **Micro-animazioni**: `message-appear` (slide-up CSS) su ogni bolla, typing indicator (tre puntini) quando `content === ''`, `active:scale-[0.88]` sul send button, hover lift sulle card landing. Classi CSS in `globals.css`.
 - **Input sanitization onboarding**: `generate/route.ts` e `generate-multi/route.ts` sanitizzano tutti i campi utente con `san()` (strip newline + limit lunghezza) prima di interpolarli nel prompt. `generate-multi` richiede auth.
 

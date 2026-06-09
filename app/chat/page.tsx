@@ -193,6 +193,17 @@ export default function ChatPage() {
   const recognitionRef = useRef<any>(null)
   const speechSynthRef = useRef<SpeechSynthesisUtterance | null>(null)
 
+  const [shareModalOpen, setShareModalOpen] = useState(false)
+  const [shareConvId, setShareConvId] = useState<string | null>(null)
+  const [shareLoading, setShareLoading] = useState(false)
+  const [shareToken, setShareToken] = useState<string | null>(null)
+  const [shareExpiresAt, setShareExpiresAt] = useState<string | null>(null)
+  const [shareHasPassword, setShareHasPassword] = useState(false)
+  const [shareExpiry, setShareExpiry] = useState<string | null>(null)
+  const [sharePassword, setSharePassword] = useState('')
+  const [sharePasswordEnabled, setSharePasswordEnabled] = useState(false)
+  const [shareCopied, setShareCopied] = useState(false)
+
   useEffect(() => {
     const el = textareaRef.current
     if (!el) return
@@ -601,6 +612,69 @@ export default function ChatPage() {
     setIsSpeaking(false)
   }
 
+  async function openShareModal(e: React.MouseEvent, convId: string) {
+    e.stopPropagation()
+    setShareConvId(convId)
+    setShareToken(null)
+    setShareExpiresAt(null)
+    setShareHasPassword(false)
+    setShareExpiry(null)
+    setSharePassword('')
+    setSharePasswordEnabled(false)
+    setShareCopied(false)
+    setShareModalOpen(true)
+    setShareLoading(true)
+    try {
+      const res = await fetch(`/api/conversations/${convId}/share`)
+      const data = await res.json()
+      setShareToken(data.token)
+      setShareExpiresAt(data.expires_at)
+      setShareHasPassword(data.has_password)
+    } finally {
+      setShareLoading(false)
+    }
+  }
+
+  async function createShare() {
+    if (!shareConvId) return
+    setShareLoading(true)
+    try {
+      const res = await fetch(`/api/conversations/${shareConvId}/share`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          expires_in: shareExpiry,
+          password: sharePasswordEnabled && sharePassword.trim() ? sharePassword.trim() : null,
+        }),
+      })
+      const data = await res.json()
+      if (data.error) { toast.error(data.error); return }
+      setShareToken(data.token)
+      setShareExpiresAt(data.expires_at)
+      setShareHasPassword(data.has_password)
+    } catch {
+      toast.error('Errore nella creazione del link')
+    } finally {
+      setShareLoading(false)
+    }
+  }
+
+  async function revokeShare() {
+    if (!shareConvId) return
+    await fetch(`/api/conversations/${shareConvId}/share`, { method: 'DELETE' })
+    setShareToken(null)
+    setShareExpiresAt(null)
+    setShareHasPassword(false)
+    toast.success('Link revocato')
+  }
+
+  function copyShareLink() {
+    if (!shareToken) return
+    navigator.clipboard.writeText(`${window.location.origin}/conv/${shareToken}`)
+    setShareCopied(true)
+    setTimeout(() => setShareCopied(false), 2000)
+  }
+
   return (
     <div
       className={`flex h-[100dvh] overflow-hidden transition-colors duration-300 ${theme.bg} relative`}
@@ -613,6 +687,89 @@ export default function ChatPage() {
           <div className="bg-white rounded-2xl border-2 border-dashed border-gray-400 px-10 py-8 text-center shadow-xl">
             <p className="text-2xl mb-2">📎</p>
             <p className="text-sm font-semibold text-gray-700">Rilascia per allegare</p>
+          </div>
+        </div>
+      )}
+
+      {/* Share modal */}
+      {shareModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 px-4 pb-4" onClick={() => setShareModalOpen(false)}>
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-xl p-5 w-full max-w-sm" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-sm font-semibold text-gray-900">Condividi conversazione</p>
+              <button onClick={() => setShareModalOpen(false)} className="text-gray-400 active:text-gray-600 w-6 h-6 flex items-center justify-center">✕</button>
+            </div>
+
+            {shareLoading ? (
+              <p className="text-xs text-gray-400 text-center py-4">Caricamento...</p>
+            ) : shareToken ? (
+              <>
+                <div className="bg-gray-50 rounded-xl px-3 py-2.5 mb-3 flex items-center gap-2">
+                  <p className="text-xs text-gray-500 flex-1 truncate font-mono">
+                    {typeof window !== 'undefined' ? `${window.location.origin}/conv/${shareToken}` : ''}
+                  </p>
+                  <button onClick={copyShareLink}
+                    className={`text-xs font-medium flex-shrink-0 ${shareCopied ? 'text-green-600' : 'text-blue-600'}`}>
+                    {shareCopied ? 'Copiato!' : 'Copia'}
+                  </button>
+                </div>
+                {shareExpiresAt && (
+                  <p className="text-xs text-gray-400 mb-2">
+                    Scade il {new Date(shareExpiresAt).toLocaleDateString('it-IT')}
+                  </p>
+                )}
+                {shareHasPassword && <p className="text-xs text-gray-400 mb-3">🔒 Protetto da password</p>}
+                <button onClick={revokeShare}
+                  className="w-full text-sm text-red-500 active:text-red-400 py-2 mt-1">
+                  Revoca link
+                </button>
+              </>
+            ) : (
+              <>
+                <p className="text-xs text-gray-500 mb-3">Scadenza del link</p>
+                <div className="space-y-2 mb-4">
+                  {([
+                    { value: null, label: 'Nessuna scadenza' },
+                    { value: '7d', label: '7 giorni' },
+                    { value: '30d', label: '30 giorni' },
+                  ] as { value: string | null; label: string }[]).map(opt => (
+                    <button key={String(opt.value)} onClick={() => setShareExpiry(opt.value)}
+                      className={`w-full px-4 py-2.5 rounded-xl border text-left text-sm transition-colors ${
+                        shareExpiry === opt.value
+                          ? 'border-gray-900 bg-gray-900 text-white'
+                          : 'border-gray-200 text-gray-700 active:bg-gray-50'
+                      }`}>
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="mb-4">
+                  <button onClick={() => setSharePasswordEnabled(p => !p)}
+                    className="flex items-center gap-2 text-sm text-gray-700 w-full">
+                    <span className={`w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center ${sharePasswordEnabled ? 'bg-gray-900 border-gray-900' : 'border-gray-300'}`}>
+                      {sharePasswordEnabled && <span className="text-white text-[10px]">✓</span>}
+                    </span>
+                    Proteggi con password
+                  </button>
+                  {sharePasswordEnabled && (
+                    <input
+                      type="password"
+                      value={sharePassword}
+                      onChange={e => setSharePassword(e.target.value)}
+                      placeholder="Password"
+                      className="mt-2 w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-gray-400"
+                    />
+                  )}
+                </div>
+
+                <button onClick={createShare}
+                  disabled={sharePasswordEnabled && !sharePassword.trim()}
+                  className="w-full py-3 bg-gray-900 text-white text-sm font-medium rounded-xl disabled:opacity-40 active:opacity-80">
+                  Genera link
+                </button>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -691,7 +848,15 @@ export default function ChatPage() {
                   <p className="text-sm text-white truncate">{conv.titolo || 'Nuova conversazione'}</p>
                   <p className="text-xs text-white/40">{formatDate(conv.created_at)}</p>
                 </div>
-                <button onClick={e => deleteConversation(e, conv.id)} className="text-white/30 active:text-red-400 ml-2 p-1">🗑</button>
+                <button onClick={e => openShareModal(e, conv.id)} className="text-white/30 active:text-blue-400 p-1" title="Condividi">
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                    <circle cx="11" cy="2.5" r="1.5" stroke="currentColor" strokeWidth="1.3"/>
+                    <circle cx="11" cy="11.5" r="1.5" stroke="currentColor" strokeWidth="1.3"/>
+                    <circle cx="3" cy="7" r="1.5" stroke="currentColor" strokeWidth="1.3"/>
+                    <path d="M4.4 6.3L9.6 3.2M4.4 7.7L9.6 10.8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+                  </svg>
+                </button>
+                <button onClick={e => deleteConversation(e, conv.id)} className="text-white/30 active:text-red-400 p-1">🗑</button>
               </div>
             ))
           )}

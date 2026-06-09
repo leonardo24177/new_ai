@@ -122,6 +122,26 @@ CREATE POLICY "skills: lettura pubblica" ON skills
 -- ─── admins ──────────────────────────────────────────────────
 -- Nessuna policy per utenti normali: le route admin usano service_role che bypassa RLS
 
+-- ─── conversation_shares ─────────────────────────────────────
+DROP POLICY IF EXISTS "shares: lettura propria"      ON conversation_shares;
+DROP POLICY IF EXISTS "shares: inserimento proprio"  ON conversation_shares;
+DROP POLICY IF EXISTS "shares: aggiornamento proprio" ON conversation_shares;
+DROP POLICY IF EXISTS "shares: eliminazione propria" ON conversation_shares;
+
+ALTER TABLE conversation_shares ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "shares: lettura propria" ON conversation_shares
+  FOR SELECT USING (auth.uid() = owner_user_id);
+
+CREATE POLICY "shares: inserimento proprio" ON conversation_shares
+  FOR INSERT WITH CHECK (auth.uid() = owner_user_id);
+
+CREATE POLICY "shares: aggiornamento proprio" ON conversation_shares
+  FOR UPDATE USING (auth.uid() = owner_user_id);
+
+CREATE POLICY "shares: eliminazione propria" ON conversation_shares
+  FOR DELETE USING (auth.uid() = owner_user_id);
+
 -- ─── STORAGE: bucket user-files ──────────────────────────────
 DROP POLICY IF EXISTS "storage: upload proprio"    ON storage.objects;
 DROP POLICY IF EXISTS "storage: lettura propria"   ON storage.objects;
