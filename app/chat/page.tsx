@@ -161,7 +161,7 @@ export default function ChatPage() {
   const [fileContexts, setFileContexts] = useState<FileContext[]>([])
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [skills, setSkills] = useState<{ id: string; slug: string; label: string; extra_sys: string }[]>([])
+  const [skills, setSkills] = useState<{ id: string; slug: string; label: string; extra_sys: string; categoria: string | null }[]>([])
   const [activeSkills, setActiveSkills] = useState<string[]>([])
   const [professione, setProfessione] = useState<string>('')
   const [showSkills, setShowSkills] = useState(false)
@@ -175,6 +175,7 @@ export default function ChatPage() {
   const [isRecording, setIsRecording] = useState(false)
   const [isSpeaking, setIsSpeaking] = useState(false)
   const [ttsEnabled, setTtsEnabled] = useState(false)
+  const [introMessage, setIntroMessage] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -222,7 +223,7 @@ export default function ChatPage() {
     // Carica skill filtrate per professione (+ quelle generali)
     let skillQuery = supabase
       .from('skills')
-      .select('id, slug, label, extra_sys, professione')
+      .select('id, slug, label, extra_sys, professione, categoria')
       .eq('pubblica', true)
 
     if (professioneUtente) {
@@ -240,6 +241,46 @@ export default function ChatPage() {
     // conversationId rimane null — verrà creata al primo messaggio
     if (publicSkills) setSkills(publicSkills)
     if (admin) setIsAdmin(true)
+
+    // Mostra intro se arrivi da onboarding o da cambio professione
+    if (typeof window !== 'undefined' && localStorage.getItem('assistente_intro') === '1') {
+      localStorage.removeItem('assistente_intro')
+      const nome = config?.nome_assistente || 'Assistente'
+      const prof = professioneUtente
+      const skillsCaricate = publicSkills || []
+      setIntroMessage(buildIntroMessage(nome, prof, skillsCaricate))
+    }
+  }
+
+  function buildIntroMessage(
+    nome: string,
+    professione: string,
+    skillsCaricate: Array<{ label: string; categoria: string | null }>
+  ): string {
+    const profLabel = professione
+      ? professione.charAt(0).toUpperCase() + professione.slice(1).replace(/_/g, ' ')
+      : ''
+
+    let msg = `Ciao! Sono **${nome}**`
+    if (profLabel) msg += `, il tuo assistente AI per **${profLabel}**`
+    msg += '.\n\n'
+
+    if (skillsCaricate.length > 0) {
+      const byCategoria: Record<string, string[]> = {}
+      skillsCaricate.forEach(s => {
+        const cat = s.categoria || 'Generali'
+        if (!byCategoria[cat]) byCategoria[cat] = []
+        byCategoria[cat].push(s.label)
+      })
+      msg += 'Dal pulsante **✦ Skill** in basso puoi attivare modalità specializzate:\n'
+      for (const [cat, labels] of Object.entries(byCategoria)) {
+        msg += `\n**${cat}:** ${labels.join(', ')}`
+      }
+      msg += '\n\n'
+    }
+
+    msg += 'Come posso aiutarti oggi?'
+    return msg
   }
 
   async function loadConversations() {
@@ -319,6 +360,7 @@ export default function ChatPage() {
 
   async function sendMessage() {
     if (!input.trim() || loading) return
+    setIntroMessage('')
     const userMessage: Message = { role: 'user', content: input.trim() }
     const newMessages = [...messages, userMessage]
     setMessages(newMessages)
@@ -630,7 +672,10 @@ export default function ChatPage() {
 
         {/* Messaggi */}
         <div className="flex-1 overflow-y-auto px-3 py-3 min-h-0">
-          {messages.length === 0 && (
+          {messages.length === 0 && introMessage && (
+            <MessageBubble message={{ role: 'assistant', content: introMessage }} theme={theme} />
+          )}
+          {messages.length === 0 && !introMessage && (
             <div className="flex flex-col items-center justify-center h-full text-center px-4">
               <div className={`w-12 h-12 rounded-full ${theme.bubble} flex items-center justify-center mb-3 opacity-20`}>
                 <span className="text-2xl text-white">{ambitoConfig?.emoji || '✨'}</span>

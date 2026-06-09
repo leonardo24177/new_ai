@@ -213,6 +213,7 @@ export default function ProfilePage() {
     if (ambito === 'lavoro' && ad.professione && ad.professione !== savedProfessione.current) {
       await regeneratePrompt()
       savedProfessione.current = ad.professione
+      localStorage.setItem('assistente_intro', '1')
       return
     }
 

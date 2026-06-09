@@ -256,6 +256,7 @@ export default function OnboardingForm() {
           { onConflict: 'user_id,ambito' }
         )
       }
+      localStorage.setItem('assistente_intro', '1')
       router.push('/chat'); router.refresh()
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Errore sconosciuto')
