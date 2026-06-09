@@ -70,12 +70,41 @@ export async function GET() {
         nome: u.user_metadata?.nome || config?.nome_assistente || '',
         system_prompt: config?.system_prompt_base || '',
         ambiti: userAmbiti,
+        approvato: u.app_metadata?.approvato === true,
       }
     })
 
     return NextResponse.json({ users })
   } catch (error) {
     console.error('Errore admin/users GET:', error)
+    return NextResponse.json({ error: 'Errore interno' }, { status: 500 })
+  }
+}
+
+// PATCH — approva o revoca utente
+export async function PATCH(req: NextRequest) {
+  try {
+    const supabase = await checkAdmin()
+    if (!supabase) {
+      return NextResponse.json({ error: 'Non autorizzato' }, { status: 403 })
+    }
+
+    const { user_id, approvato } = await req.json()
+    if (!user_id || typeof approvato !== 'boolean') {
+      return NextResponse.json({ error: 'Parametri mancanti' }, { status: 400 })
+    }
+
+    const { error } = await supabase.auth.admin.updateUserById(user_id, {
+      app_metadata: { approvato },
+    })
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    console.error('Errore admin/users PATCH:', error)
     return NextResponse.json({ error: 'Errore interno' }, { status: 500 })
   }
 }

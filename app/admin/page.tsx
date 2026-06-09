@@ -12,6 +12,7 @@ interface User {
   nome: string
   system_prompt: string
   ambiti: string[]
+  approvato: boolean
 }
 
 interface Skill {
@@ -126,6 +127,15 @@ export default function AdminPage() {
     loadSkills()
   }
 
+  async function approveUser(userId: string, approvato: boolean) {
+    await fetch('/api/admin/users', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: userId, approvato }),
+    })
+    setUsers(prev => prev.map(u => u.id === userId ? { ...u, approvato } : u))
+  }
+
   async function deleteUser(userId: string) {
     if (!confirm('Eliminare questo utente e tutti i suoi dati?')) return
     const res = await fetch('/api/admin/users', {
@@ -236,6 +246,16 @@ export default function AdminPage() {
                     </div>
                     {/* Bottoni verticali su mobile per più spazio */}
                     <div className="flex flex-col gap-1.5 flex-shrink-0">
+                      <button
+                        onClick={() => approveUser(user.id, !user.approvato)}
+                        className={`text-xs px-3 py-2 rounded-lg transition-colors ${
+                          user.approvato
+                            ? 'border border-green-200 text-green-600 bg-green-50 active:bg-green-100'
+                            : 'border border-orange-200 text-orange-600 bg-orange-50 active:bg-orange-100'
+                        }`}
+                      >
+                        {user.approvato ? '✓ Approvato' : 'Approva'}
+                      </button>
                       <button
                         onClick={() => setSelectedUser(selectedUser?.id === user.id ? null : user)}
                         className="text-xs px-3 py-2 border border-gray-200 rounded-lg text-gray-600 active:border-gray-400 transition-colors"

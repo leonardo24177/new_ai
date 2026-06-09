@@ -27,23 +27,32 @@ export async function middleware(request: NextRequest) {
 
   const { data: { user } } = await supabase.auth.getUser()
 
-  const protectedPaths = ['/chat', '/profile', '/admin']
-  const isProtected = protectedPaths.some(p => request.nextUrl.pathname.startsWith(p))
+  const path = request.nextUrl.pathname
+
+  // Percorsi che richiedono autenticazione
+  const protectedPaths = ['/chat', '/profile', '/admin', '/in-attesa']
+  const isProtected = protectedPaths.some(p => path.startsWith(p))
 
   if (!user && isProtected) {
     return NextResponse.redirect(new URL('/login', request.url))
   }
 
-  if (user && (
-    request.nextUrl.pathname === '/login' ||
-    request.nextUrl.pathname === '/register'
-  )) {
+  if (user && (path === '/login' || path === '/register')) {
     return NextResponse.redirect(new URL('/chat', request.url))
+  }
+
+  // Controllo approvazione: /chat e /profile richiedono app_metadata.approvato = true
+  // /admin ha il suo controllo interno; /in-attesa e /onboarding sono sempre accessibili
+  const approvalPaths = ['/chat', '/profile']
+  const needsApproval = approvalPaths.some(p => path.startsWith(p))
+
+  if (user && needsApproval && user.app_metadata?.approvato !== true) {
+    return NextResponse.redirect(new URL('/in-attesa', request.url))
   }
 
   return supabaseResponse
 }
 
 export const config = {
-  matcher: ['/chat/:path*', '/profile/:path*', '/admin/:path*', '/login', '/register', '/onboarding', '/forgot-password', '/reset-password'],
+  matcher: ['/chat/:path*', '/profile/:path*', '/admin/:path*', '/login', '/register', '/onboarding', '/forgot-password', '/reset-password', '/in-attesa'],
 }
