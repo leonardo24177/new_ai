@@ -27,12 +27,17 @@ export async function DELETE() {
       await service.storage.from('user-files').remove(paths)
     }
 
-    // 2. Elimina dati tabelle (CASCADE gestisce messages via conversations)
+    // 2. Elimina dati tabelle
     await service.from('user_files').delete().eq('user_id', user.id)
-    await service.from('messages').delete().in(
-      'conversation_id',
-      (await service.from('conversations').select('id').eq('user_id', user.id)).data?.map(c => c.id) || []
-    )
+
+    const { data: convs } = await service.from('conversations').select('id').eq('user_id', user.id)
+    const convIds = (convs || []).map((c: { id: string }) => c.id)
+    // Batch da 100 per evitare URL troppo lunghe con .in()
+    const BATCH = 100
+    for (let i = 0; i < convIds.length; i += BATCH) {
+      await service.from('messages').delete().in('conversation_id', convIds.slice(i, i + BATCH))
+    }
+
     await service.from('conversations').delete().eq('user_id', user.id)
     await service.from('user_ambiti').delete().eq('user_id', user.id)
     await service.from('user_configs').delete().eq('user_id', user.id)

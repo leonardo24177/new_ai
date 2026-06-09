@@ -381,12 +381,12 @@ export default function ChatPage() {
       if (ambitoAttivo) formData.append('ambito', ambitoAttivo)
       const res = await fetch('/api/upload', { method: 'POST', body: formData })
       const data = await res.json()
-      if (data.error) { toast.error(data.error); return }
+      if (data.error) { toast.error(`"${file.name}": ${data.error}`); return }
       setFileContexts(prev => [...prev, { id: data.id, nome: data.nome, testo: data.testo_estratto, mime_type: data.mime_type, dimensione: data.dimensione, storage_path: data.storage_path }])
       toast.success(`"${data.nome}" allegato alla chat`)
     } catch (e) {
       console.error(e)
-      toast.error('Errore durante il caricamento')
+      toast.error(`"${file.name}": errore durante il caricamento`)
     } finally {
       setUploading(false)
     }
