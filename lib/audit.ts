@@ -8,7 +8,7 @@ export type AuditAction =
   | 'account_delete'
   | 'user_approved'
 
-export function logAction(
+export async function logAction(
   userId: string,
   userEmail: string,
   action: AuditAction,
@@ -18,8 +18,5 @@ export function logAction(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
-  return service
-    .from('audit_logs')
-    .insert({ user_id: userId, user_email: userEmail, action, metadata })
-    .then(() => undefined)
+  await service.from('audit_logs').insert({ user_id: userId, user_email: userEmail, action, metadata })
 }
