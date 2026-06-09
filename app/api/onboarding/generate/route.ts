@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
+import { MODELS } from '@/lib/model-pricing'
 
 const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
@@ -68,7 +69,7 @@ ISTRUZIONI PER LA GENERAZIONE:
 Genera ora il system prompt:`
 
     const message = await client.messages.create({
-      model: 'claude-sonnet-4-6',
+      model: MODELS.sonnet,
       max_tokens: 1000,
       messages: [{ role: 'user', content: prompt }],
     })

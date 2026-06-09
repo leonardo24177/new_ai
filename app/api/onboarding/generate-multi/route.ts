@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
+import { MODELS } from '@/lib/model-pricing'
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! })
 
@@ -51,7 +52,7 @@ ${note_libere?.trim() ? `- Tieni conto di questa indicazione dell'utente: "${not
 Identità base:`
 
     const baseMessage = await client.messages.create({
-      model: 'claude-sonnet-4-6',
+      model: MODELS.sonnet,
       max_tokens: 300,
       messages: [{ role: 'user', content: basePromptRequest }],
     })
@@ -116,7 +117,7 @@ ${ad.ambito === 'lavoro' ? '8' : '6'}. NON includere meta-commenti — inizia di
 Genera il blocco:`
 
       const message = await client.messages.create({
-        model: 'claude-sonnet-4-6',
+        model: MODELS.sonnet,
         max_tokens: 800,
         messages: [{ role: 'user', content: prompt }],
       })

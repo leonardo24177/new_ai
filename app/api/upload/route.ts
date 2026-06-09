@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import Anthropic from '@anthropic-ai/sdk'
+import { MODELS } from '@/lib/model-pricing'
 
 export async function POST(req: NextRequest) {
   try {
@@ -115,7 +116,7 @@ export async function POST(req: NextRequest) {
           try {
             const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
             const ocrPromise = anthropic.messages.create({
-              model: 'claude-haiku-4-5-20251001',
+              model: MODELS.haiku,
               max_tokens: 4096,
               messages: [{
                 role: 'user',

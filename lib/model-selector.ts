@@ -1,5 +1,6 @@
 // lib/model-selector.ts
 // Selezione dinamica del modello in base alla complessità della richiesta
+import { MODELS } from './model-pricing'
 
 interface ModelSelectorInput {
   userMessage: string
@@ -112,13 +113,13 @@ export function selectModel(input: ModelSelectorInput): ModelSelection {
   let reason: string
 
   if (score >= 70) {
-    model = 'claude-opus-4-8'
+    model = MODELS.opus
     reason = `Opus (score: ${score}) — ${reasons.join(', ')}`
   } else if (score >= 25) {
-    model = 'claude-sonnet-4-6'
+    model = MODELS.sonnet
     reason = `Sonnet (score: ${score}) — ${reasons.join(', ')}`
   } else {
-    model = 'claude-haiku-4-5-20251001'
+    model = MODELS.haiku
     reason = `Haiku (score: ${score}) — risposta semplice`
   }
 

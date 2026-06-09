@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
+import { MODELS } from '@/lib/model-pricing'
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! })
 
@@ -35,7 +36,7 @@ export async function PATCH(req: NextRequest) {
 
     // Genera titolo con Claude
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-5',
+      model: MODELS.haiku,
       max_tokens: 50,
       messages: [{
         role: 'user',
