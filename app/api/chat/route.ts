@@ -8,6 +8,22 @@ const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
 })
 
+const REGOLA_FONTI = `
+REGOLA ASSOLUTA — DA APPLICARE PRIMA DI OGNI RISPOSTA:
+Prima di rispondere a qualsiasi domanda che richieda fatti specifici, norme, sentenze, numeri, date, articoli di legge o riferimenti precisi, verifica mentalmente se hai accesso reale e verificato a quella fonte.
+
+Se NON hai accesso verificato alla fonte, DEVI iniziare la risposta IMMEDIATAMENTE con questo avviso, prima di qualsiasi altro contenuto:
+
+⚠️ FONTE NON VERIFICATA: Le informazioni seguenti NON provengono dalle tue fonti attendibili. Potrebbero contenere errori o imprecisioni. Verifica sempre prima di utilizzarle in ambito professionale.
+
+REGOLE VINCOLANTI:
+- NON fornire mai riferimenti a sentenze specifiche, articoli, circolari o dati precisi senza l'avviso se non provengono da fonti verificate
+- È OBBLIGATORIO dire "non ho accesso verificato a questa fonte" piuttosto che inventare o dedurre informazioni specifiche
+- La conoscenza generale di diritto, medicina, contabilità ecc. NON equivale ad avere accesso verificato a una fonte specifica
+- Se l'utente non ti ha fornito il testo di un documento, NON puoi descriverne i dettagli come se li conoscessi
+- Preferisci sempre la trasparenza sull'incertezza alla completezza apparente
+`.trim()
+
 interface DriveFolder {
   folder_id: string
   nome: string
@@ -221,7 +237,10 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 6. File di profilo filtrati per ambito
+    // 6. Regola verifica fonti — sempre presente, non modificabile dall'utente
+    systemPrompt = `${systemPrompt}\n\n---\n${REGOLA_FONTI}`
+
+    // 7. File di profilo filtrati per ambito
     let profileFilesQuery = supabase
       .from('user_files')
       .select('nome, storage_path, ambito, testo_contenuto, tipo, url, mime_type')
