@@ -36,6 +36,7 @@ export default function DriveFolderPicker({ folders, onChange }: Props) {
   const [pickerLoading, setPickerLoading] = useState(false)
   const [connecting, setConnecting] = useState(false)
   const [driveToken, setDriveToken] = useState<string | null>(null)
+  const [tokenExpired, setTokenExpired] = useState(false)
   const [editingIdx, setEditingIdx] = useState<number | null>(null)
 
   // Carica gapi picker + Google Identity Services
@@ -75,12 +76,14 @@ export default function DriveFolderPicker({ folders, onChange }: Props) {
         .single()
 
       if (data?.google_drive_token) {
-        // Controlla se non è scaduto (con 5 min di margine)
         const expiry = data.google_drive_token_expiry
           ? new Date(data.google_drive_token_expiry).getTime()
           : 0
         if (!expiry || expiry > Date.now() + 5 * 60 * 1000) {
           setDriveToken(data.google_drive_token)
+          setTokenExpired(false)
+        } else {
+          setTokenExpired(true)
         }
       }
     }
@@ -122,6 +125,7 @@ export default function DriveFolderPicker({ folders, onChange }: Props) {
         }
 
         setDriveToken(token)
+        setTokenExpired(false)
       },
     })
 
@@ -184,7 +188,7 @@ export default function DriveFolderPicker({ folders, onChange }: Props) {
 
       {/* Stato connessione Drive */}
       {!driveToken ? (
-        <div className="bg-white border border-gray-200 rounded-2xl p-4">
+        <div className={`border rounded-2xl p-4 ${tokenExpired ? 'bg-amber-50 border-amber-200' : 'bg-white border-gray-200'}`}>
           <div className="flex items-center gap-3 mb-3">
             <div className="w-9 h-9 rounded-xl bg-gray-100 flex items-center justify-center flex-shrink-0">
               <svg width="20" height="18" viewBox="0 0 87.3 78" xmlns="http://www.w3.org/2000/svg">
@@ -197,16 +201,27 @@ export default function DriveFolderPicker({ folders, onChange }: Props) {
               </svg>
             </div>
             <div>
-              <p className="text-sm font-medium text-gray-900">Google Drive non connesso</p>
-              <p className="text-xs text-gray-400">Autorizza l&apos;accesso per collegare le cartelle</p>
+              {tokenExpired ? (
+                <>
+                  <p className="text-sm font-medium text-amber-800">Accesso Google Drive scaduto</p>
+                  <p className="text-xs text-amber-600">Riconnetti per continuare a usare le cartelle</p>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm font-medium text-gray-900">Google Drive non connesso</p>
+                  <p className="text-xs text-gray-400">Autorizza l&apos;accesso per collegare le cartelle</p>
+                </>
+              )}
             </div>
           </div>
           <button
             onClick={connectDrive}
             disabled={connecting}
-            className="w-full bg-gray-900 text-white rounded-xl py-3 text-sm font-medium disabled:opacity-40 transition-colors"
+            className={`w-full rounded-xl py-3 text-sm font-medium disabled:opacity-40 transition-colors ${
+              tokenExpired ? 'bg-amber-600 text-white hover:bg-amber-700' : 'bg-gray-900 text-white'
+            }`}
           >
-            {connecting ? 'Connessione in corso...' : '🔗 Connetti Google Drive'}
+            {connecting ? 'Connessione in corso...' : tokenExpired ? '🔄 Riconnetti Google Drive' : '🔗 Connetti Google Drive'}
           </button>
         </div>
       ) : (
