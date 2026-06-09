@@ -209,7 +209,7 @@ export async function POST(req: NextRequest) {
     // 6. File di profilo filtrati per ambito
     let profileFilesQuery = supabase
       .from('user_files')
-      .select('nome, storage_path, ambito, testo_contenuto, tipo, url')
+      .select('nome, storage_path, ambito, testo_contenuto, tipo, url, mime_type')
       .eq('user_id', user.id)
       .eq('tipo_contesto', 'profile')
 
@@ -223,10 +223,35 @@ export async function POST(req: NextRequest) {
     const messagesWithContext = [...messages]
     const fileTexts: string[] = []
 
+    // Raccoglie blocchi immagine (max 5 totali tra profilo e chat)
+    type ImageBlock = { type: 'image'; source: { type: 'base64'; media_type: string; data: string } }
+    const imageBlocks: ImageBlock[] = []
+
+    const SUPPORTED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+
+    async function fetchImageBlock(storagePath: string, mimeType: string): Promise<ImageBlock | null> {
+      if (!SUPPORTED_IMAGE_TYPES.includes(mimeType)) return null
+      try {
+        const { data: blob } = await supabase.storage.from('user-files').download(storagePath)
+        if (!blob) return null
+        const arrayBuffer = await blob.arrayBuffer()
+        const base64 = Buffer.from(arrayBuffer).toString('base64')
+        return { type: 'image', source: { type: 'base64', media_type: mimeType, data: base64 } }
+      } catch {
+        return null
+      }
+    }
+
     if (profileFiles && profileFiles.length > 0) {
       for (const f of profileFiles) {
         const ambitoTag = f.ambito ? ` [${f.ambito}]` : ''
-        if (f.testo_contenuto && f.testo_contenuto.trim().length > 0) {
+        if (f.mime_type?.startsWith('image/') && f.storage_path) {
+          // Immagini di profilo → blocchi visivi
+          if (imageBlocks.length < 5) {
+            const block = await fetchImageBlock(f.storage_path, f.mime_type)
+            if (block) imageBlocks.push(block)
+          }
+        } else if (f.testo_contenuto && f.testo_contenuto.trim().length > 0) {
           const tipoLabel = f.tipo === 'link' ? 'Link' : 'File'
           fileTexts.push(`[${tipoLabel} verificato${ambitoTag}: ${f.nome}]\n${f.testo_contenuto.slice(0, 30000)}`)
         } else if (f.tipo === 'link' && f.url) {
@@ -282,7 +307,13 @@ export async function POST(req: NextRequest) {
 
     if (file_contexts && file_contexts.length > 0) {
       for (const fc of file_contexts) {
-        if (fc.testo) {
+        if (fc.mime_type?.startsWith('image/') && fc.storage_path) {
+          // Immagini allegate in chat → blocchi visivi
+          if (imageBlocks.length < 5) {
+            const block = await fetchImageBlock(fc.storage_path, fc.mime_type)
+            if (block) imageBlocks.push(block)
+          }
+        } else if (fc.testo) {
           fileTexts.push(`[File allegato: ${fc.nome}]\n${fc.testo}`)
         } else if (fc.nome) {
           fileTexts.push(`[File allegato: ${fc.nome}]`)
@@ -290,13 +321,18 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    if (fileTexts.length > 0 && messagesWithContext.length > 0) {
+    if ((fileTexts.length > 0 || imageBlocks.length > 0) && messagesWithContext.length > 0) {
       const lastIdx = messagesWithContext.length - 1
       const last = messagesWithContext[lastIdx]
       if (last.role === 'user') {
+        const testoCompleto = fileTexts.length > 0
+          ? `${fileTexts.join('\n\n')}\n\n---\n\n${last.content}`
+          : last.content
         messagesWithContext[lastIdx] = {
           ...last,
-          content: `${fileTexts.join('\n\n')}\n\n---\n\n${last.content}`,
+          content: imageBlocks.length > 0
+            ? [...imageBlocks, { type: 'text', text: testoCompleto }]
+            : testoCompleto,
         }
       }
     }
@@ -337,9 +373,10 @@ export async function POST(req: NextRequest) {
             model,
             max_tokens: model === 'claude-opus-4-8' ? 8192 : 4096,
             system: systemPrompt,
-            messages: messagesWithContext.map((m: { role: string; content: string }) => ({
+            messages: messagesWithContext.map((m: { role: string; content: string | unknown[] }) => ({
               role: m.role as 'user' | 'assistant',
-              content: m.content,
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              content: m.content as any,
             })),
           })
 

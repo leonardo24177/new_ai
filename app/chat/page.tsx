@@ -17,6 +17,7 @@ interface FileContext {
   testo: string
   mime_type: string
   dimensione: number
+  storage_path?: string
 }
 
 interface Conversation {
@@ -356,7 +357,7 @@ export default function ChatPage() {
       const data = await res.json()
       if (data.error) { toast.error(data.error); return }
       if (tipo_contesto === 'chat') {
-        setFileContexts(prev => [...prev, { id: data.id, nome: data.nome, testo: data.testo_estratto, mime_type: data.mime_type, dimensione: data.dimensione }])
+        setFileContexts(prev => [...prev, { id: data.id, nome: data.nome, testo: data.testo_estratto, mime_type: data.mime_type, dimensione: data.dimensione, storage_path: data.storage_path }])
         toast.success(`"${data.nome}" allegato alla chat`)
       } else {
         toast.success(`"${data.nome}" aggiunto alle fonti${ambitoAttivo ? ` [${ambitoAttivo}]` : ' permanenti'}`)
