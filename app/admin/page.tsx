@@ -391,52 +391,71 @@ export default function AdminPage() {
             )}
 
             <div className="space-y-2">
-              {Object.entries(
-                skills.reduce((acc, s) => {
-                  if (!acc[s.categoria]) acc[s.categoria] = []
-                  acc[s.categoria].push(s)
+              {(() => {
+                // Raggruppa per professione, poi per categoria
+                const byProfessione = skills.reduce((acc, s) => {
+                  const prof = s.professione || 'generale'
+                  if (!acc[prof]) acc[prof] = {}
+                  if (!acc[prof][s.categoria]) acc[prof][s.categoria] = []
+                  acc[prof][s.categoria].push(s)
                   return acc
-                }, {} as Record<string, Skill[]>)
-              ).map(([categoria, categorySkills]) => (
-                <div key={categoria}>
-                  <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2 mt-4">{categoria}</p>
-                  {categorySkills.map(skill => (
-                    <div key={skill.id} className="bg-white rounded-2xl border border-gray-200 p-4 mb-2">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1 flex-wrap">
-                            <p className="text-sm font-semibold text-gray-900">{skill.label}</p>
-                            <span className="text-xs text-gray-400 font-mono">{skill.slug}</span>
-                            {skill.professione && skill.professione !== 'generale' && (
-                              <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
-                                {PROFESSIONI.find(p => p.value === skill.professione)?.label || skill.professione}
-                              </span>
-                            )}
-                            {!skill.pubblica && (
-                              <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full">Privata</span>
-                            )}
+                }, {} as Record<string, Record<string, Skill[]>>)
+
+                // Generale prima, poi le altre professioni in ordine
+                const ordine = ['generale', ...PROFESSIONI.filter(p => p.value !== 'generale').map(p => p.value)]
+
+                return ordine
+                  .filter(prof => byProfessione[prof])
+                  .map(prof => {
+                    const profLabel = PROFESSIONI.find(p => p.value === prof)?.label || prof
+                    const categorie = byProfessione[prof]
+                    return (
+                      <div key={prof} className="mb-6">
+                        <div className="flex items-center gap-2 mb-3 mt-4">
+                          <p className="text-sm font-semibold text-gray-700">{profLabel}</p>
+                          <span className="text-xs text-gray-400">
+                            ({Object.values(categorie).flat().length})
+                          </span>
+                        </div>
+                        {Object.entries(categorie).map(([categoria, categorySkills]) => (
+                          <div key={categoria} className="mb-3">
+                            <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2 ml-1">{categoria}</p>
+                            {categorySkills.map(skill => (
+                              <div key={skill.id} className="bg-white rounded-2xl border border-gray-200 p-4 mb-2">
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                                      <p className="text-sm font-semibold text-gray-900">{skill.label}</p>
+                                      <span className="text-xs text-gray-400 font-mono">{skill.slug}</span>
+                                      {!skill.pubblica && (
+                                        <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full">Privata</span>
+                                      )}
+                                    </div>
+                                    <p className="text-xs text-gray-500 line-clamp-2">{skill.extra_sys}</p>
+                                  </div>
+                                  <div className="flex flex-col gap-1.5 flex-shrink-0">
+                                    <button
+                                      onClick={() => openEditSkill(skill)}
+                                      className="text-xs px-3 py-2 border border-gray-200 rounded-lg text-gray-600 active:border-gray-400 transition-colors"
+                                    >
+                                      Modifica
+                                    </button>
+                                    <button
+                                      onClick={() => deleteSkill(skill.id)}
+                                      className="text-xs px-3 py-2 border border-red-200 rounded-lg text-red-500 active:bg-red-50 transition-colors"
+                                    >
+                                      Elimina
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
                           </div>
-                          <p className="text-xs text-gray-500 line-clamp-2">{skill.extra_sys}</p>
-                        </div>
-                        <div className="flex flex-col gap-1.5 flex-shrink-0">
-                          <button
-                            onClick={() => openEditSkill(skill)}
-                            className="text-xs px-3 py-2 border border-gray-200 rounded-lg text-gray-600 active:border-gray-400 transition-colors"
-                          >
-                            Modifica
-                          </button>
-                          <button
-                            onClick={() => deleteSkill(skill.id)}
-                            className="text-xs px-3 py-2 border border-red-200 rounded-lg text-red-500 active:bg-red-50 transition-colors"
-                          >
-                            Elimina
-                          </button>
-                        </div>
+                        ))}
                       </div>
-                    </div>
-                  ))}
-                </div>
-              ))}
+                    )
+                  })
+              })()}
             </div>
           </div>
         )}
