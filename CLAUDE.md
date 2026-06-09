@@ -49,6 +49,7 @@ app/
 components/
   DriveFolderPicker.tsx     ← Google Drive OAuth picker (browser-only)
   FileTree.tsx              ← visualizzazione file caricati
+  CookieBanner.tsx          ← banner GDPR cookie (localStorage 'cookie_consent'), incluso in layout.tsx
 lib/
   supabase/client.ts        ← Supabase client (browser)
   supabase/server.ts        ← Supabase client (SSR, usa cookies)
@@ -134,6 +135,8 @@ SENTRY_AUTH_TOKEN               ← token per upload source maps in build
 - **Streaming chat**: la route `/api/chat` usa `ReadableStream` con SSE (`data: {...}\n\n`). Non toccare il formato senza aggiornare il consumer in `chat/page.tsx`.
 - **System prompt**: la concatenazione è `base + ambito_extra + skill_extra`, separati da `\n\n---\n`. Non invertire l'ordine.
 - **Rate limiting**: 60 messaggi/ora per utente, contati sulla tabella `messages` via join su `conversations.user_id`.
+- **Limite costo mensile**: $5/mese per utente (costante `COSTO_MENSILE_MAX` in `/api/chat/route.ts`). Calcolato in parallelo al rate limiting sommando `costo_stimato` dei messaggi dal primo del mese. Restituisce 429 con messaggio che invita a contattare il supporto.
+- **Cookie banner**: `CookieBanner.tsx` incluso in `layout.tsx`. Usa `localStorage.cookie_consent` per ricordare l'accettazione. Solo cookie tecnici — nessuna CMP complessa necessaria.
 - **File upload — formati supportati**: PDF (con fallback OCR via Claude Haiku se testo < 100 char), DOCX, XLSX, XLS, PPTX (parsing XML via jszip), immagini (JPEG/PNG/GIF/WebP), testo, codice. Formati `.doc`, `.ppt` restituiscono errore esplicito che chiede di convertire.
 - **File upload — OCR**: se `pdf-parse` restituisce < 100 caratteri, il PDF viene inviato a Claude Haiku come documento nativo. Timeout fisso di 20s (`Promise.race`) per rispettare il limite Vercel di 30s.
 - **File**: il testo estratto viene troncato a 50.000 caratteri al momento dell'upload; in chat il contesto per file è troncato a 30.000.
