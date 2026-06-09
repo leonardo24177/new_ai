@@ -186,6 +186,13 @@ export default function ChatPage() {
   const recognitionRef = useRef<any>(null)
   const speechSynthRef = useRef<SpeechSynthesisUtterance | null>(null)
 
+  useEffect(() => {
+    const el = textareaRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight, 120)}px`
+  }, [input])
+
   const theme = AMBITI_THEME[ambitoAttivo || 'default'] || AMBITI_THEME.default
   const ambitoConfig = AMBITI_CONFIG.find(a => a.value === ambitoAttivo)
 
@@ -433,10 +440,7 @@ export default function ChatPage() {
     setLoading(true)
     const sentFiles = [...fileContexts]
     setFileContexts([])
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto'
-      textareaRef.current.blur()
-    }
+    textareaRef.current?.blur()
 
     // Crea la conversazione su Supabase solo al primo messaggio reale
     let currentConversationId = conversationId
@@ -544,8 +548,6 @@ export default function ChatPage() {
 
   function handleTextareaChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
     setInput(e.target.value)
-    e.target.style.height = 'auto'
-    e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`
   }
 
   function startRecording() {
