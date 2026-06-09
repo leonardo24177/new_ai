@@ -28,6 +28,7 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [showPasswordConfirm, setShowPasswordConfirm] = useState(false)
+  const [terminiAccettati, setTerminiAccettati] = useState(false)
 
   async function handleRegister(e: React.FormEvent) {
     e.preventDefault()
@@ -164,16 +165,24 @@ export default function RegisterPage() {
               <p className="text-red-500 text-sm bg-red-50 rounded-xl px-3 py-2">{error}</p>
             )}
 
-            <p className="text-xs text-gray-400 text-center">
-              Registrandoti accetti i{' '}
-              <Link href="/termini" className="underline hover:text-gray-600">Termini di Servizio</Link>
-              {' '}e la{' '}
-              <Link href="/privacy" className="underline hover:text-gray-600">Privacy Policy</Link>.
-            </p>
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={terminiAccettati}
+                onChange={e => setTerminiAccettati(e.target.checked)}
+                className="mt-0.5 w-4 h-4 rounded border-gray-300 accent-gray-900 cursor-pointer flex-shrink-0"
+              />
+              <span className="text-xs text-gray-500 leading-relaxed">
+                Ho letto e accetto i{' '}
+                <Link href="/termini" target="_blank" className="underline hover:text-gray-700">Termini di Servizio</Link>
+                {' '}e la{' '}
+                <Link href="/privacy" target="_blank" className="underline hover:text-gray-700">Privacy Policy</Link>.
+              </span>
+            </label>
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || !terminiAccettati}
               className="w-full bg-gray-900 text-white rounded-xl py-3.5 text-base font-medium hover:bg-gray-800 active:bg-gray-700 disabled:opacity-50 transition-colors"
             >
               {loading ? 'Registrazione in corso...' : 'Crea account'}
