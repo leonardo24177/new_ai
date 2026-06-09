@@ -604,6 +604,29 @@ export default function ProfilePage() {
                 )}
 
                 {currentAmbito.ambito === 'studio' && (
+                  <>
+                  <div className="bg-white rounded-2xl border border-gray-200 p-4">
+                    <h3 className="text-sm font-semibold text-gray-900 mb-3">Materia / Corso di studio</h3>
+                    <div className="flex flex-wrap gap-2 mb-3">
+                      {['Ingegneria', 'Medicina', 'Giurisprudenza', 'Economia', 'Psicologia', 'Architettura', 'Informatica', 'Scienze politiche', 'Lettere', 'Fisica / Matematica', 'Biologia', 'Chimica'].map(m => (
+                        <button key={m} onClick={() => updateAmbitoField('studio', 'materia_studio', m)}
+                          className={`px-3 py-2 rounded-xl border text-sm font-medium transition-all ${
+                            currentAmbito.materia_studio === m
+                              ? 'border-gray-900 bg-gray-900 text-white'
+                              : 'border-gray-200 text-gray-700'
+                          }`}>
+                          {m}
+                        </button>
+                      ))}
+                    </div>
+                    <input
+                      type="text"
+                      value={currentAmbito.materia_studio}
+                      onChange={e => updateAmbitoField('studio', 'materia_studio', e.target.value)}
+                      placeholder="Altra materia..."
+                      className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-gray-400"
+                    />
+                  </div>
                   <div className="bg-white rounded-2xl border border-gray-200 p-4">
                     <h3 className="text-sm font-semibold text-gray-900 mb-3">Livello scolastico</h3>
                     <div className="space-y-2">
@@ -619,6 +642,7 @@ export default function ProfilePage() {
                       ))}
                     </div>
                   </div>
+                  </>
                 )}
 
                 {currentAmbito.ambito === 'personale' && (
