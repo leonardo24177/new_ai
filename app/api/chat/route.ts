@@ -419,7 +419,7 @@ export async function POST(req: NextRequest) {
         try {
           const anthropicStream = await client.messages.stream({
             model,
-            max_tokens: model === 'claude-opus-4-8' ? 8192 : 4096,
+            max_tokens: 8192,
             system: systemPrompt,
             messages: messagesWithContext.map((m: { role: string; content: string | unknown[] }) => ({
               role: m.role as 'user' | 'assistant',
