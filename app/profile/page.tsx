@@ -883,6 +883,35 @@ export default function ProfilePage() {
             </button>
           </div>
         )}
+
+        {/* Zona pericolosa */}
+        <div className="mt-10 pt-6 border-t border-gray-100">
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Zona pericolosa</p>
+          <div className="bg-white rounded-2xl border border-red-100 p-4">
+            <p className="text-sm font-medium text-gray-900 mb-1">Elimina account</p>
+            <p className="text-xs text-gray-400 mb-4">
+              Elimina permanentemente il tuo account, tutte le conversazioni, i file e le impostazioni. Questa azione è irreversibile.
+            </p>
+            <button
+              onClick={async () => {
+                if (!confirm('Sei sicuro? Questa azione è irreversibile e cancellerà tutti i tuoi dati.')) return
+                if (!confirm('Ultima conferma: eliminare definitivamente l\'account?')) return
+                const res = await fetch('/api/account/delete', { method: 'DELETE' })
+                if (res.ok) {
+                  const supabase = createClient()
+                  await supabase.auth.signOut()
+                  router.push('/')
+                } else {
+                  const d = await res.json()
+                  alert(d.error || 'Errore durante l\'eliminazione')
+                }
+              }}
+              className="text-sm text-red-500 border border-red-200 px-4 py-2.5 rounded-xl active:bg-red-50 transition-colors"
+            >
+              Elimina il mio account
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   )
