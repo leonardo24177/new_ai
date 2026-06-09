@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createHash } from 'crypto'
+import { logAction } from '@/lib/audit'
 
 function hashPassword(pw: string): string {
   return createHash('sha256').update(pw).digest('hex')
@@ -90,6 +91,10 @@ export async function POST(
 
     if (error) return NextResponse.json({ error: 'Errore creazione link' }, { status: 500 })
 
+    logAction(user.id, user.email || '', 'share_create', {
+      conversation_id: id, expires_in: body.expires_in || null, has_password: !!password_hash,
+    }).catch(() => {})
+
     return NextResponse.json({ token, expires_at, has_password: !!password_hash })
   } catch {
     return NextResponse.json({ error: 'Errore interno' }, { status: 500 })
@@ -112,6 +117,8 @@ export async function DELETE(
       .delete()
       .eq('conversation_id', id)
       .eq('owner_user_id', user.id)
+
+    logAction(user.id, user.email || '', 'share_revoke', { conversation_id: id }).catch(() => {})
 
     return NextResponse.json({ ok: true })
   } catch {

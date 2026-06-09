@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
+import { logAction } from '@/lib/audit'
 
 async function createServiceClient() {
   const cookieStore = await cookies()
@@ -123,6 +124,11 @@ export async function PATCH(req: NextRequest) {
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
+
+    const { data: { user: adminUser } } = await supabase.auth.getUser()
+    logAction(adminUser?.id || '', adminUser?.email || '', 'user_approved', {
+      target_user_id: user_id, approvato,
+    }).catch(() => {})
 
     return NextResponse.json({ success: true })
   } catch (error) {

@@ -40,6 +40,15 @@ const PROFESSIONI = [
   { value: 'notaio', label: '📜 Notaio' },
 ]
 
+interface AuditLog {
+  id: string
+  user_id: string
+  user_email: string
+  action: string
+  metadata: Record<string, unknown>
+  created_at: string
+}
+
 interface Stats {
   totale_messaggi: number
   totale_costo: number
@@ -49,10 +58,41 @@ interface Stats {
   per_giorno: { data: string; costo: number }[]
 }
 
+function actionColor(action: string): string {
+  switch (action) {
+    case 'chat_message':  return 'bg-blue-100 text-blue-700'
+    case 'file_upload':   return 'bg-green-100 text-green-700'
+    case 'share_create':  return 'bg-purple-100 text-purple-700'
+    case 'share_revoke':  return 'bg-orange-100 text-orange-700'
+    case 'account_delete': return 'bg-red-100 text-red-700'
+    case 'user_approved': return 'bg-teal-100 text-teal-700'
+    default:              return 'bg-gray-100 text-gray-600'
+  }
+}
+
+function metadataSummary(action: string, meta: Record<string, unknown>): string {
+  switch (action) {
+    case 'chat_message':
+      return `model=${meta.model} ambito=${meta.ambito || '—'} in=${meta.tokens_input} out=${meta.tokens_output}`
+    case 'file_upload':
+      return `${meta.nome} (${meta.mime_type}) ${meta.tipo_contesto}`
+    case 'share_create':
+      return `conv=${String(meta.conversation_id).slice(0, 8)}… expires=${meta.expires_in || 'mai'} pwd=${meta.has_password}`
+    case 'share_revoke':
+      return `conv=${String(meta.conversation_id).slice(0, 8)}…`
+    case 'account_delete':
+      return 'account eliminato'
+    case 'user_approved':
+      return `target=${String(meta.target_user_id).slice(0, 8)}… approvato=${meta.approvato}`
+    default:
+      return JSON.stringify(meta).slice(0, 80)
+  }
+}
+
 export default function AdminPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState<'utenti' | 'skill' | 'stats'>('utenti')
+  const [activeTab, setActiveTab] = useState<'utenti' | 'skill' | 'stats' | 'audit'>('utenti')
   const [users, setUsers] = useState<User[]>([])
   const [skills, setSkills] = useState<Skill[]>([])
   const [stats, setStats] = useState<Stats | null>(null)
@@ -65,6 +105,11 @@ export default function AdminPage() {
   const [newSkill, setNewSkill] = useState(false)
   const [saving, setSaving] = useState(false)
   const [successMsg, setSuccessMsg] = useState('')
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([])
+  const [auditTotal, setAuditTotal] = useState(0)
+  const [auditLoading, setAuditLoading] = useState(false)
+  const [auditOffset, setAuditOffset] = useState(0)
+  const [auditFilters, setAuditFilters] = useState({ action: '', user_email: '', date_from: '', date_to: '' })
   const [skillForm, setSkillForm] = useState({
     slug: '', label: '', extra_sys: '', categoria: 'generale', pubblica: true, professione: 'generale'
   })
@@ -98,6 +143,26 @@ export default function AdminPage() {
     const res = await fetch('/api/admin/stats')
     const data = await res.json()
     setStats(data)
+  }
+
+  async function loadAuditLogs(reset = true, filters = auditFilters, offset = 0) {
+    setAuditLoading(true)
+    if (reset) setAuditOffset(0)
+    const params = new URLSearchParams()
+    if (filters.action) params.set('action', filters.action)
+    if (filters.user_email) params.set('user_email', filters.user_email)
+    if (filters.date_from) params.set('date_from', filters.date_from)
+    if (filters.date_to) params.set('date_to', filters.date_to)
+    params.set('offset', String(reset ? 0 : offset))
+    const res = await fetch(`/api/admin/audit?${params}`)
+    const data = await res.json()
+    if (reset) {
+      setAuditLogs(data.logs || [])
+    } else {
+      setAuditLogs(prev => [...prev, ...(data.logs || [])])
+    }
+    setAuditTotal(data.total || 0)
+    setAuditLoading(false)
   }
 
   async function saveSkill() {
@@ -226,12 +291,14 @@ export default function AdminPage() {
             { key: 'utenti', label: `Utenti (${users.length})` },
             { key: 'skill', label: `Skill (${skills.length})` },
             { key: 'stats', label: '📊 Stats' },
+            { key: 'audit', label: '🔍 Audit' },
           ].map(tab => (
             <button
               key={tab.key}
               onClick={() => {
-                setActiveTab(tab.key as 'utenti' | 'skill' | 'stats')
+                setActiveTab(tab.key as 'utenti' | 'skill' | 'stats' | 'audit')
                 if (tab.key === 'stats') loadStats()
+                if (tab.key === 'audit') loadAuditLogs(true)
               }}
               className={`px-4 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0 ${
                 activeTab === tab.key ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'
@@ -647,6 +714,117 @@ export default function AdminPage() {
             )}
           </div>
         )}
+        {/* TAB AUDIT */}
+        {activeTab === 'audit' && (
+          <div>
+            {/* Filtri */}
+            <div className="bg-white rounded-2xl border border-gray-200 p-4 mb-4 space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">Azione</label>
+                  <select
+                    value={auditFilters.action}
+                    onChange={e => setAuditFilters(f => ({ ...f, action: e.target.value }))}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900"
+                  >
+                    <option value="">Tutte</option>
+                    <option value="chat_message">chat_message</option>
+                    <option value="file_upload">file_upload</option>
+                    <option value="share_create">share_create</option>
+                    <option value="share_revoke">share_revoke</option>
+                    <option value="account_delete">account_delete</option>
+                    <option value="user_approved">user_approved</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">Email utente</label>
+                  <input
+                    type="text"
+                    value={auditFilters.user_email}
+                    onChange={e => setAuditFilters(f => ({ ...f, user_email: e.target.value }))}
+                    placeholder="cerca@email.com"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">Dal</label>
+                  <input
+                    type="date"
+                    value={auditFilters.date_from}
+                    onChange={e => setAuditFilters(f => ({ ...f, date_from: e.target.value }))}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">Al</label>
+                  <input
+                    type="date"
+                    value={auditFilters.date_to}
+                    onChange={e => setAuditFilters(f => ({ ...f, date_to: e.target.value }))}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900"
+                  />
+                </div>
+              </div>
+              <button
+                onClick={() => loadAuditLogs(true, auditFilters, 0)}
+                disabled={auditLoading}
+                className="w-full bg-gray-900 text-white rounded-xl py-2.5 text-sm font-medium active:bg-gray-800 disabled:opacity-40 transition-colors"
+              >
+                {auditLoading ? 'Caricamento...' : 'Applica filtri'}
+              </button>
+            </div>
+
+            {/* Contatore */}
+            <p className="text-xs text-gray-400 mb-3">
+              {auditTotal} eventi totali · mostrati {auditLogs.length}
+            </p>
+
+            {/* Lista eventi */}
+            {auditLogs.length === 0 && !auditLoading ? (
+              <div className="bg-white rounded-2xl border border-gray-200 p-8 text-center">
+                <p className="text-gray-400 text-sm">Nessun evento trovato</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {auditLogs.map(log => (
+                  <div key={log.id} className="bg-white rounded-2xl border border-gray-200 p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap mb-1">
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${actionColor(log.action)}`}>
+                            {log.action}
+                          </span>
+                          <span className="text-xs text-gray-500 truncate">{log.user_email || log.user_id?.slice(0, 8)}</span>
+                        </div>
+                        <p className="text-xs text-gray-400 font-mono truncate">
+                          {metadataSummary(log.action, log.metadata)}
+                        </p>
+                      </div>
+                      <p className="text-xs text-gray-300 flex-shrink-0 whitespace-nowrap">
+                        {new Date(log.created_at).toLocaleString('it-IT', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+
+                {auditLogs.length < auditTotal && (
+                  <button
+                    onClick={() => {
+                      const newOffset = auditOffset + 50
+                      setAuditOffset(newOffset)
+                      loadAuditLogs(false, auditFilters, newOffset)
+                    }}
+                    disabled={auditLoading}
+                    className="w-full py-3 border border-gray-200 rounded-2xl text-sm text-gray-600 active:bg-gray-50 disabled:opacity-40 transition-colors"
+                  >
+                    {auditLoading ? 'Caricamento...' : `Carica altri (${auditTotal - auditLogs.length} rimanenti)`}
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
       </div>
     </div>
   )

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { MODELS } from '@/lib/model-pricing'
+import { logAction } from '@/lib/audit'
 
 export async function POST(req: NextRequest) {
   try {
@@ -237,6 +238,10 @@ export async function POST(req: NextRequest) {
     if (dbError) {
       return NextResponse.json({ error: `Errore DB: ${dbError.message}` }, { status: 500 })
     }
+
+    logAction(user.id, user.email || '', 'file_upload', {
+      nome: file.name, mime_type: file.type, dimensione: file.size, tipo_contesto, ambito,
+    }).catch(() => {})
 
     return NextResponse.json({
       id: fileRecord.id,

@@ -3,6 +3,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
 import { selectModel } from '@/lib/model-selector'
 import { calcolaCosto } from '@/lib/model-pricing'
+import { logAction } from '@/lib/audit'
 
 const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
@@ -456,6 +457,10 @@ export async function POST(req: NextRequest) {
               tokens_output: outputTokens,
               costo_stimato: costoStimato,
             })
+            logAction(user.id, user.email || '', 'chat_message', {
+              model, ambito: ambito_attivo, conversation_id,
+              tokens_input: inputTokens, tokens_output: outputTokens,
+            }).catch(() => {})
           }
 
           controller.enqueue(encoder.encode(

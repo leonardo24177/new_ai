@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createServiceClient } from '@supabase/supabase-js'
+import { logAction } from '@/lib/audit'
 
 export async function DELETE() {
   try {
@@ -42,7 +43,10 @@ export async function DELETE() {
     await service.from('user_ambiti').delete().eq('user_id', user.id)
     await service.from('user_configs').delete().eq('user_id', user.id)
 
-    // 3. Elimina l'utente da auth
+    // 3. Log prima di eliminare (user non esisterà più dopo)
+    await logAction(user.id, user.email || '', 'account_delete', {}).catch(() => {})
+
+    // 4. Elimina l'utente da auth
     const { error } = await service.auth.admin.deleteUser(user.id)
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 })
