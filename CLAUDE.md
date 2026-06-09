@@ -45,6 +45,7 @@ app/
   profile/page.tsx          ← gestione ambiti, file, Google Drive, system prompt
   admin/page.tsx            ← pannello admin (utenti, skill, stats costi)
   onboarding/page.tsx       ← setup guidato multi-step post-registrazione
+  come-funziona/page.tsx    ← guida utente pubblica (steps + FAQ), linkata da landing e footer
   login/ register/ forgot-password/ reset-password/
 components/
   DriveFolderPicker.tsx     ← Google Drive OAuth picker (browser-only)
