@@ -160,7 +160,6 @@ export async function POST(req: NextRequest) {
       file_contexts,
       active_skill_slugs,
       ambito_attivo,
-      google_access_token,
     } = await req.json()
 
     // 1. Recupera system prompt base
@@ -294,7 +293,7 @@ export async function POST(req: NextRequest) {
     const driveFolders: DriveFolder[] = userConfig?.drive_folders || []
 
     if (driveFolders.length > 0) {
-      const accessToken = (google_access_token as string | null) || await getGoogleAccessToken(supabase, user.id)
+      const accessToken = await getGoogleAccessToken(supabase, user.id)
 
       if (accessToken) {
         for (const folder of driveFolders) {

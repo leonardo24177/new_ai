@@ -488,7 +488,6 @@ export default function ChatPage() {
           file_contexts: sentFiles,
           active_skill_slugs: activeSkills,
           ambito_attivo: ambitoAttivo,
-          google_access_token: googleToken,  // ← token Google per lettura Drive
         }),
       })
       if (!res.ok || !res.body) throw new Error('Errore risposta')
