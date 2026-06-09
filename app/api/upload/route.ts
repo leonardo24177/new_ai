@@ -27,7 +27,6 @@ export async function POST(req: NextRequest) {
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       'application/vnd.ms-excel',
       'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-      'application/msword',
       'application/json',
       'application/xml',
       'image/jpeg',
@@ -66,6 +65,10 @@ export async function POST(req: NextRequest) {
 
     if (file.type === 'application/vnd.ms-powerpoint' || nomeFile.endsWith('.ppt')) {
       return NextResponse.json({ error: 'Il formato .ppt non è supportato. Converti il file in .pptx o PDF prima di caricarlo.' }, { status: 400 })
+    }
+
+    if (file.type === 'application/msword' || nomeFile.endsWith('.doc')) {
+      return NextResponse.json({ error: 'Il formato .doc non è supportato. Converti il file in .docx o PDF prima di caricarlo.' }, { status: 400 })
     }
 
     if (!isMimeAccettato && !isCodice) {
