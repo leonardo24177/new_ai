@@ -133,6 +133,7 @@ export default function ProfilePage() {
   const [driveFolders, setDriveFolders] = useState<DriveFolder[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
   const folderInputRef = useRef<HTMLInputElement>(null)
+  const savedProfessione = useRef<string>('')
 
   useEffect(() => { loadProfile() }, [])
 
@@ -148,6 +149,8 @@ export default function ProfilePage() {
     if (ambiti && ambiti.length > 0) {
       setAmbitiData(ambiti.map(a => normalizeAmbitoData(a.onboarding_data)))
       setActiveAmbito(ambiti[0].onboarding_data.ambito)
+      const lavoro = ambiti.find(a => a.onboarding_data?.ambito === 'lavoro')
+      savedProfessione.current = lavoro?.onboarding_data?.professione || ''
     }
 
     const { data: config } = await supabase
@@ -200,15 +203,22 @@ export default function ProfilePage() {
   }
 
   async function saveAmbito(ambito: Ambito) {
+    const ad = ambitiData.find(a => a.ambito === ambito)
+    if (!ad) return
+
+    if (ambito === 'lavoro' && ad.professione && ad.professione !== savedProfessione.current) {
+      await regeneratePrompt()
+      savedProfessione.current = ad.professione
+      return
+    }
+
     setSaving(true)
     try {
       const supabase = createClient()
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
-      const ad = ambitiData.find(a => a.ambito === ambito)
-      if (!ad) return
       await supabase.from('user_ambiti')
-        .upsert({ user_id: user.id, ambito, onboarding_data: ad }, { onConflict: 'user_id,ambito' })
+        .upsert({ user_id: user.id, ambito, onboarding_data: ad, attivo: true }, { onConflict: 'user_id,ambito' })
       setSuccessMsg('Salvato!')
       setTimeout(() => setSuccessMsg(''), 2000)
     } finally {
@@ -239,6 +249,8 @@ export default function ProfilePage() {
         }, { onConflict: 'user_id,ambito' })
       }
       setSystemPrompt(json.system_prompt)
+      const lavoro = ambitiData.find(a => a.ambito === 'lavoro')
+      if (lavoro) savedProfessione.current = lavoro.professione
       setSuccessMsg('System prompt rigenerato!')
       setTimeout(() => setSuccessMsg(''), 3000)
     } catch (e) {
