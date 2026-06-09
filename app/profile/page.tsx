@@ -127,6 +127,8 @@ export default function ProfilePage() {
   const [ambitiData, setAmbitiData] = useState<AmbitoData[]>([])
   const [profileFiles, setProfileFiles] = useState<UserFile[]>([])
   const [systemPrompt, setSystemPrompt] = useState('')
+  const [systemPromptExtras, setSystemPromptExtras] = useState<Record<string, string>>({})
+  const [promptAmbitoView, setPromptAmbitoView] = useState<string>('lavoro')
   const [dragIndex, setDragIndex] = useState<number | null>(null)
   const [successMsg, setSuccessMsg] = useState('')
   const [activeFileAmbito, setActiveFileAmbito] = useState<string>('tutti')
@@ -151,6 +153,8 @@ export default function ProfilePage() {
       setActiveAmbito(ambiti[0].onboarding_data.ambito)
       const lavoro = ambiti.find(a => a.onboarding_data?.ambito === 'lavoro')
       savedProfessione.current = lavoro?.onboarding_data?.professione || ''
+      setSystemPromptExtras(Object.fromEntries(ambiti.map(a => [a.ambito, a.system_prompt_extra || ''])))
+      setPromptAmbitoView(lavoro ? 'lavoro' : ambiti[0].ambito)
     }
 
     const { data: config } = await supabase
@@ -249,6 +253,7 @@ export default function ProfilePage() {
         }, { onConflict: 'user_id,ambito' })
       }
       setSystemPrompt(json.system_prompt)
+      setSystemPromptExtras(Object.fromEntries(ambitiData.map((ad, i) => [ad.ambito, json.ambiti_prompts?.[i] || ''])))
       const lavoro = ambitiData.find(a => a.ambito === 'lavoro')
       if (lavoro) savedProfessione.current = lavoro.professione
       setSuccessMsg('System prompt rigenerato!')
@@ -788,17 +793,49 @@ export default function ProfilePage() {
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h2 className="text-sm font-semibold text-gray-900">System prompt attivo</h2>
-                <p className="text-xs text-gray-400 mt-0.5">Generato automaticamente</p>
+                <p className="text-xs text-gray-400 mt-0.5">Prompt completo inviato a Claude</p>
               </div>
               <button onClick={regeneratePrompt} disabled={saving}
                 className="flex items-center gap-2 border border-gray-200 text-gray-600 px-3 py-2 rounded-xl text-sm active:border-gray-400 disabled:opacity-40 transition-colors">
                 🔄 {saving ? 'Rigenerando...' : 'Rigenera'}
               </button>
             </div>
-            <div className="bg-white rounded-2xl border border-gray-200 p-4">
-              <textarea value={systemPrompt} onChange={e => setSystemPrompt(e.target.value)}
-                rows={14} className="w-full text-sm text-gray-900 font-mono leading-relaxed resize-none focus:outline-none" />
+
+            {/* Selettore ambito */}
+            {Object.keys(systemPromptExtras).length > 1 && (
+              <div className="flex gap-2 mb-3">
+                {Object.keys(systemPromptExtras).map(a => (
+                  <button key={a} onClick={() => setPromptAmbitoView(a)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                      promptAmbitoView === a ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600'
+                    }`}>
+                    {a === 'lavoro' ? '💼 Lavoro' : a === 'studio' ? '📖 Studio' : '🏠 Personale'}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Prompt base */}
+            <div className="mb-3">
+              <p className="text-xs font-medium text-gray-500 mb-1.5 px-1">Base</p>
+              <div className="bg-white rounded-2xl border border-gray-200 p-4">
+                <textarea value={systemPrompt} onChange={e => setSystemPrompt(e.target.value)}
+                  rows={5} className="w-full text-sm text-gray-900 font-mono leading-relaxed resize-none focus:outline-none" />
+              </div>
             </div>
+
+            {/* Estensione ambito */}
+            {systemPromptExtras[promptAmbitoView] && (
+              <div className="mb-3">
+                <p className="text-xs font-medium text-gray-500 mb-1.5 px-1">
+                  Estensione {promptAmbitoView === 'lavoro' ? 'lavoro' : promptAmbitoView === 'studio' ? 'studio' : 'personale'}
+                </p>
+                <div className="bg-white rounded-2xl border border-gray-200 p-4 max-h-72 overflow-y-auto">
+                  <pre className="text-sm text-gray-700 font-mono leading-relaxed whitespace-pre-wrap">{systemPromptExtras[promptAmbitoView]}</pre>
+                </div>
+              </div>
+            )}
+
             <button
               onClick={async () => {
                 setSaving(true)
@@ -814,8 +851,8 @@ export default function ProfilePage() {
                 setSaving(false)
               }}
               disabled={saving}
-              className="mt-3 w-full bg-gray-900 text-white rounded-xl py-3.5 text-sm font-medium active:bg-gray-800 disabled:opacity-40 transition-colors">
-              {saving ? 'Salvo...' : 'Salva system prompt'}
+              className="mt-1 w-full bg-gray-900 text-white rounded-xl py-3.5 text-sm font-medium active:bg-gray-800 disabled:opacity-40 transition-colors">
+              {saving ? 'Salvo...' : 'Salva prompt base'}
             </button>
           </div>
         )}
