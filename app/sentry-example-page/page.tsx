@@ -1,6 +1,9 @@
 'use client'
 
+import { notFound } from 'next/navigation'
 import * as Sentry from '@sentry/nextjs'
+
+if (process.env.NODE_ENV === 'production') notFound()
 
 const SENTRY_DSN = 'https://5f92579d9ff1e66496957f331f93d9d4@o4511534591705088.ingest.de.sentry.io/4511534595047504'
 

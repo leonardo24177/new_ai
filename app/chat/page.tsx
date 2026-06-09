@@ -475,6 +475,9 @@ export default function ChatPage() {
           .single()
         const hasDriveFolders = userCfg?.drive_folders && Array.isArray(userCfg.drive_folders) && userCfg.drive_folders.length > 0
         googleToken = hasDriveFolders ? (session?.provider_token || null) : null
+        if (hasDriveFolders && !googleToken) {
+          toast('Google Drive non disponibile — riconnetti il Drive dal profilo', { icon: '⚠️' })
+        }
       }
 
       const res = await fetch('/api/chat', {

@@ -52,7 +52,7 @@ export async function GET() {
       .from('user_ambiti')
       .select('user_id, ambito, system_prompt_extra')
 
-    const { data: authData, error } = await supabase.auth.admin.listUsers()
+    const { data: authData, error } = await supabase.auth.admin.listUsers({ page: 1, perPage: 1000 })
 
     if (error) {
       console.error('Errore listUsers:', error)
