@@ -159,7 +159,10 @@ export async function POST(req: NextRequest) {
           .gte('created_at', primoDelMese),
       ])
 
-      if ((msgCount ?? 0) >= 60) {
+      // +1 per contare anche il messaggio corrente non ancora salvato.
+      // Race condition con richieste concorrenti è accettabile a questa scala;
+      // per un fix completo servono Redis o un trigger Postgres atomico.
+      if ((msgCount ?? 0) + 1 > 60) {
         return new Response(JSON.stringify({ error: 'Limite orario raggiunto. Riprova tra poco.' }), { status: 429 })
       }
 
