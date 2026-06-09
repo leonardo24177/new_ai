@@ -164,10 +164,17 @@ export default function RegisterPage() {
               <p className="text-red-500 text-sm bg-red-50 rounded-xl px-3 py-2">{error}</p>
             )}
 
+            <p className="text-xs text-gray-400 text-center">
+              Registrandoti accetti i{' '}
+              <Link href="/termini" className="underline hover:text-gray-600">Termini di Servizio</Link>
+              {' '}e la{' '}
+              <Link href="/privacy" className="underline hover:text-gray-600">Privacy Policy</Link>.
+            </p>
+
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-gray-900 text-white rounded-xl py-3.5 text-base font-medium hover:bg-gray-800 active:bg-gray-700 disabled:opacity-50 transition-colors mt-2"
+              className="w-full bg-gray-900 text-white rounded-xl py-3.5 text-base font-medium hover:bg-gray-800 active:bg-gray-700 disabled:opacity-50 transition-colors"
             >
               {loading ? 'Registrazione in corso...' : 'Crea account'}
             </button>
