@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import Anthropic from '@anthropic-ai/sdk'
 
 export async function POST(req: NextRequest) {
   try {
@@ -89,11 +90,52 @@ export async function POST(req: NextRequest) {
 
     try {
       if (file.type === 'application/pdf') {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const pdfParse = await import('pdf-parse').then((m: any) => m.default || m)
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const parsed = await (pdfParse as any)(buffer)
-        testo_estratto = parsed.text?.slice(0, 50000) || ''
+        // Prova prima l'estrazione testuale standard
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const pdfParse = await import('pdf-parse').then((m: any) => m.default || m)
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const parsed = await (pdfParse as any)(buffer)
+          testo_estratto = parsed.text?.trim().slice(0, 50000) || ''
+        } catch {
+          testo_estratto = ''
+        }
+
+        // Se il testo è quasi vuoto, è probabilmente un PDF scansionato — usa Claude OCR
+        // Limite 10MB per non sovraccaricare l'API con file enormi
+        if (testo_estratto.length < 100 && file.size <= 10 * 1024 * 1024) {
+          try {
+            const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+            const risposta = await anthropic.messages.create({
+              model: 'claude-haiku-4-5-20251001',
+              max_tokens: 4096,
+              messages: [{
+                role: 'user',
+                content: [
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  {
+                    type: 'document',
+                    source: {
+                      type: 'base64',
+                      media_type: 'application/pdf',
+                      data: buffer.toString('base64'),
+                    },
+                  } as any,
+                  {
+                    type: 'text',
+                    text: 'Estrai tutto il testo leggibile da questo documento PDF. Restituisci solo il testo estratto, senza commenti o introduzioni.',
+                  },
+                ],
+              }],
+            })
+            const blocco = risposta.content[0]
+            if (blocco.type === 'text') {
+              testo_estratto = blocco.text.slice(0, 50000)
+            }
+          } catch (ocrError) {
+            console.error('Errore OCR Claude:', ocrError)
+          }
+        }
       }
       else if (
         file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
