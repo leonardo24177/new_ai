@@ -25,6 +25,7 @@ claude-opus-4-8             ← analisi complesse, file multipli (score ≥ 70)
 ```
 
 La logica di selezione è in `lib/model-selector.ts`. Il pricing in `lib/model-pricing.ts`.
+I model ID sono esportati come costanti `MODELS.haiku/sonnet/opus` da `lib/model-pricing.ts` — usare sempre quelle, mai stringhe hardcoded.
 
 ## Struttura cartelle
 
@@ -35,9 +36,11 @@ app/
     conversations/route.ts  ← GET/PATCH/DELETE conversazioni
     upload/route.ts         ← POST file (PDF/DOCX/XLSX/XLS/PPTX/immagini/testo/codice, max 20MB)
     links/route.ts          ← POST link con scraping HTML
+    email/
+      welcome/route.ts      ← POST email di benvenuto via Resend (chiamata da register dopo signUp)
     onboarding/
       generate/route.ts     ← genera system prompt singolo ambito
-      generate-multi/route.ts ← genera system prompt multi-ambito
+      generate-multi/route.ts ← genera system prompt multi-ambito (richiede auth)
     admin/
       users/route.ts        ← GET/DELETE utenti (richiede tabella admins)
       stats/route.ts        ← GET statistiche costi per modello/utente/giorno
@@ -123,6 +126,8 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY
 SUPABASE_SERVICE_ROLE_KEY       ← solo server, non esporre al client
 ANTHROPIC_API_KEY               ← solo server
 NEXT_PUBLIC_GOOGLE_CLIENT_ID    ← Google OAuth per Drive picker
+RESEND_API_KEY                  ← API key Resend (Sending access), solo server
+RESEND_FROM_EMAIL               ← email mittente verificata in Resend (es. noreply@dominio.com)
 SENTRY_ORG                      ← nome organizzazione Sentry (leonardo-stancati)
 SENTRY_PROJECT                  ← nome progetto Sentry (javascript-nextjs)
 SENTRY_AUTH_TOKEN               ← token per upload source maps in build
@@ -134,8 +139,9 @@ SENTRY_AUTH_TOKEN               ← token per upload source maps in build
 - **Auth nelle API route**: verificare sempre con `supabase.auth.getUser()` — non fidarsi di parametri passati dal client per l'user ID.
 - **Admin check**: le route admin usano `SUPABASE_SERVICE_ROLE_KEY` + verifica tabella `admins`. Non usare la chiave service role altrove.
 - **Streaming chat**: la route `/api/chat` usa `ReadableStream` con SSE (`data: {...}\n\n`). Non toccare il formato senza aggiornare il consumer in `chat/page.tsx`.
-- **System prompt**: la concatenazione è `base + ambito_extra + skill_extra`, separati da `\n\n---\n`. Non invertire l'ordine.
-- **Rate limiting**: 60 messaggi/ora per utente, contati sulla tabella `messages` via join su `conversations.user_id`.
+- **System prompt**: la concatenazione è `base + ambito_extra + skill_extra + REGOLA_FONTI`, separati da `\n\n---\n`. Non invertire l'ordine. La `REGOLA_FONTI` è hardcoded nel chat route e iniettata per tutti gli utenti/ambiti — non dipende dall'onboarding.
+- **Rate limiting**: 60 messaggi/ora per utente, contati sulla tabella `messages` via join su `conversations.user_id`. Il check usa `count + 1 > 60` per includere il messaggio corrente non ancora salvato. Race condition con richieste concorrenti accettabile a questa scala.
+- **max_tokens**: 8192 per tutti i modelli (Haiku, Sonnet, Opus).
 - **Limite costo mensile**: $5/mese per utente (costante `COSTO_MENSILE_MAX` in `/api/chat/route.ts`). Calcolato in parallelo al rate limiting sommando `costo_stimato` dei messaggi dal primo del mese. Restituisce 429 con messaggio che invita a contattare il supporto.
 - **Cookie banner**: `CookieBanner.tsx` incluso in `layout.tsx`. Usa `localStorage.cookie_consent` per ricordare l'accettazione. Solo cookie tecnici — nessuna CMP complessa necessaria.
 - **File upload — formati supportati**: PDF (con fallback OCR via Claude Haiku se testo < 100 char), DOCX, XLSX, XLS, PPTX (parsing XML via jszip), immagini (JPEG/PNG/GIF/WebP), testo, codice. Formati `.doc`, `.ppt` restituiscono errore esplicito che chiede di convertire.
@@ -149,6 +155,11 @@ SENTRY_AUTH_TOKEN               ← token per upload source maps in build
 - **Skills per ambito**: in chat le skill visibili sono filtrate per `ambitoAttivo` — lavoro vede skill della propria professione + skill globali (`professione = null`); studio e personale vedono solo skill globali. Non mostrare tutte le skill indifferentemente dall'ambito.
 - **Sentry**: inizializzato via `instrumentation.ts` (server) e `instrumentation.client.ts` (client) — questi file sono caricati automaticamente da Next.js. Non usare `tunnelRoute` in `withSentryConfig` (incompatibile con Turbopack). Il DSN è hardcoded nei file di istrumentazione perché le env var non sono disponibili in quel contesto con Turbopack.
 - **RLS Supabase**: le policy sono in `supabase/rls/policies.sql` — script idempotente con `DROP POLICY IF EXISTS` prima di ogni `CREATE POLICY`. Eseguire nel SQL Editor di Supabase dopo ogni modifica allo schema.
+- **Email transazionali**: Resend via SMTP configurato su Supabase Auth. Welcome email inviata da `/api/email/welcome` dopo la registrazione. Richiede `RESEND_API_KEY` e `RESEND_FROM_EMAIL`.
+- **Favicon**: generata dinamicamente da `app/icon.tsx` via `ImageResponse` (Next.js App Router).
+- **Google Drive token**: recuperato sempre server-side da `user_configs.google_drive_token` — mai passato dal client. Il controllo scadenza client-side in `chat/page.tsx` legge `user_configs` (non `session.provider_token` che è un token diverso). GIS implicit flow non emette refresh token — alla scadenza (~1h) l'utente deve riconnettere dal profilo.
+- **Micro-animazioni**: `message-appear` (slide-up CSS) su ogni bolla, typing indicator (tre puntini) quando `content === ''`, `active:scale-[0.88]` sul send button, hover lift sulle card landing. Classi CSS in `globals.css`.
+- **Input sanitization onboarding**: `generate/route.ts` e `generate-multi/route.ts` sanitizzano tutti i campi utente con `san()` (strip newline + limit lunghezza) prima di interpolarli nel prompt. `generate-multi` richiede auth.
 
 ## Cosa NON fare
 
@@ -162,3 +173,6 @@ SENTRY_AUTH_TOKEN               ← token per upload source maps in build
 - Non aumentare il limite immagini oltre 4MB senza verificare i limiti dell'API Anthropic.
 - Non rimuovere il timeout OCR (20s) — senza, i PDF grandi causano timeout Vercel 504.
 - Non usare `.in()` con array non limitati nella delete account — usare batch da 100.
+- Non passare `google_access_token` dal client al server — il token Drive viene sempre letto da `user_configs` server-side.
+- Non hardcodare model ID — usare sempre `MODELS.haiku/sonnet/opus` da `lib/model-pricing.ts`.
+- Non rimuovere `package-lock.json` dal repo — Vercel usa `npm ci` che richiede il lockfile per build deterministici.
