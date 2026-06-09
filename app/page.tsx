@@ -45,6 +45,9 @@ export default function LandingPage() {
           <span className="font-semibold text-gray-900 text-sm">Assistente AI</span>
         </div>
         <div className="flex items-center gap-3">
+          <Link href="/come-funziona" className="text-sm text-gray-500 hover:text-gray-900 transition-colors hidden sm:block">
+            Come funziona
+          </Link>
           <Link href="/login" className="text-sm text-gray-500 hover:text-gray-900 transition-colors">
             Accedi
           </Link>
@@ -130,6 +133,7 @@ export default function LandingPage() {
         <div className="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-gray-400">
           <span>© 2025 Assistente AI — assistente-ai.it</span>
           <div className="flex gap-5">
+            <Link href="/come-funziona" className="hover:text-gray-600 transition-colors">Come funziona</Link>
             <Link href="/privacy" className="hover:text-gray-600 transition-colors">Privacy Policy</Link>
             <Link href="/termini" className="hover:text-gray-600 transition-colors">Termini di Servizio</Link>
           </div>
