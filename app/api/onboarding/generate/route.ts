@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
+import { createClient } from '@/lib/supabase/server'
 
 const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
@@ -7,6 +8,12 @@ const client = new Anthropic({
 
 export async function POST(req: NextRequest) {
   try {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      return NextResponse.json({ error: 'Non autenticato' }, { status: 401 })
+    }
+
     const data = await req.json()
 
     const {
@@ -56,14 +63,12 @@ ISTRUZIONI PER LA GENERAZIONE:
 Genera ora il system prompt:`
 
     const message = await client.messages.create({
-      model: 'claude-sonnet-4-5',
+      model: 'claude-sonnet-4-6',
       max_tokens: 1000,
       messages: [{ role: 'user', content: prompt }],
     })
 
     const system_prompt = message.content[0].type === 'text' ? message.content[0].text : ''
-console.log('SYSTEM PROMPT GENERATO:', system_prompt)
-console.log('CONTENT:', JSON.stringify(message.content))
 
     return NextResponse.json({ system_prompt })
   } catch (error) {

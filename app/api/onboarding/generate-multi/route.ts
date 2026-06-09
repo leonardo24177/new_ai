@@ -34,11 +34,12 @@ ISTRUZIONI CRITICHE:
 - In italiano, seconda persona (tu sei...)
 - Inizia direttamente con "Sei l'assistente personale di ${nome}..."
 - NON includere meta-commenti
+${note_libere?.trim() ? `- Tieni conto di questa indicazione dell'utente: "${note_libere.trim()}"` : ''}
 
 Identità base:`
 
     const baseMessage = await client.messages.create({
-      model: 'claude-sonnet-4-5',
+      model: 'claude-sonnet-4-6',
       max_tokens: 300,
       messages: [{ role: 'user', content: basePromptRequest }],
     })
@@ -88,6 +89,7 @@ Tono: ${ad.tono}`
       const prompt = `Genera un blocco di istruzioni specifico per questo ambito di utilizzo dell'assistente AI per l'utente ${nome}.
 
 ${contestoAmbito}
+${note_libere?.trim() ? `Note aggiuntive dell'utente: ${note_libere.trim()}` : ''}
 
 ISTRUZIONI PER LA GENERAZIONE:
 1. Il blocco deve essere in italiano
@@ -101,7 +103,7 @@ ${ad.ambito === 'lavoro' ? '8' : '6'}. NON includere meta-commenti — inizia di
 Genera il blocco:`
 
       const message = await client.messages.create({
-        model: 'claude-sonnet-4-5',
+        model: 'claude-sonnet-4-6',
         max_tokens: 800,
         messages: [{ role: 'user', content: prompt }],
       })
