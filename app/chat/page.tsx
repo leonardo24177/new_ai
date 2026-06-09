@@ -156,6 +156,7 @@ export default function ChatPage() {
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [isDragging, setIsDragging] = useState(false)
   const [conversationId, setConversationId] = useState<string | null>(null)
   const [nomeAssistente, setNomeAssistente] = useState('Assistente')
   const [nomeUtente, setNomeUtente] = useState('')
@@ -403,6 +404,25 @@ export default function ChatPage() {
     uploadFileDirectly(namedFile)
   }
 
+  function handleDragOver(e: React.DragEvent) {
+    e.preventDefault()
+    if (e.dataTransfer.types.includes('Files')) setIsDragging(true)
+  }
+
+  function handleDragLeave(e: React.DragEvent) {
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) setIsDragging(false)
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault()
+    setIsDragging(false)
+    const files = Array.from(e.dataTransfer.files)
+    if (files.length === 0) return
+    for (const file of files.slice(0, 3)) {
+      uploadFileDirectly(file)
+    }
+  }
+
   async function sendMessage() {
     if (!input.trim() || loading) return
     setIntroMessage('')
@@ -561,7 +581,20 @@ export default function ChatPage() {
   }
 
   return (
-    <div className={`flex h-[100dvh] overflow-hidden transition-colors duration-300 ${theme.bg}`}>
+    <div
+      className={`flex h-[100dvh] overflow-hidden transition-colors duration-300 ${theme.bg} relative`}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {isDragging && (
+        <div className="absolute inset-0 z-50 bg-gray-900/30 flex items-center justify-center pointer-events-none">
+          <div className="bg-white rounded-2xl border-2 border-dashed border-gray-400 px-10 py-8 text-center shadow-xl">
+            <p className="text-2xl mb-2">📎</p>
+            <p className="text-sm font-semibold text-gray-700">Rilascia per allegare</p>
+          </div>
+        </div>
+      )}
 
       {/* Dialog scelta file */}
       {showFileDialog && pendingFile && (
