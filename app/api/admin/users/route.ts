@@ -98,8 +98,21 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: 'Non autorizzato' }, { status: 403 })
     }
 
-    const { user_id, approvato } = await req.json()
-    if (!user_id || typeof approvato !== 'boolean') {
+    const { user_id, approvato, new_password } = await req.json()
+    if (!user_id) {
+      return NextResponse.json({ error: 'user_id mancante' }, { status: 400 })
+    }
+
+    if (new_password !== undefined) {
+      if (typeof new_password !== 'string' || new_password.length < 6) {
+        return NextResponse.json({ error: 'Password troppo corta (min 6 caratteri)' }, { status: 400 })
+      }
+      const { error } = await supabase.auth.admin.updateUserById(user_id, { password: new_password })
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json({ success: true })
+    }
+
+    if (typeof approvato !== 'boolean') {
       return NextResponse.json({ error: 'Parametri mancanti' }, { status: 400 })
     }
 

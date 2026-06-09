@@ -57,6 +57,9 @@ export default function AdminPage() {
   const [skills, setSkills] = useState<Skill[]>([])
   const [stats, setStats] = useState<Stats | null>(null)
   const [selectedUser, setSelectedUser] = useState<User | null>(null)
+  const [passwordUser, setPasswordUser] = useState<string | null>(null)
+  const [newPassword, setNewPassword] = useState('')
+  const [savingPassword, setSavingPassword] = useState(false)
   const [editingSkill, setEditingSkill] = useState<Skill | null>(null)
   const [newSkill, setNewSkill] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -145,6 +148,26 @@ export default function AdminPage() {
       body: JSON.stringify({ user_id: userId }),
     })
     if (res.ok) loadUsers()
+  }
+
+  async function changePassword(userId: string) {
+    if (!newPassword || newPassword.length < 6) return
+    setSavingPassword(true)
+    const res = await fetch('/api/admin/users', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: userId, new_password: newPassword }),
+    })
+    setSavingPassword(false)
+    if (res.ok) {
+      setPasswordUser(null)
+      setNewPassword('')
+      setSuccessMsg('Password aggiornata!')
+      setTimeout(() => setSuccessMsg(''), 2000)
+    } else {
+      const data = await res.json()
+      alert(data.error || 'Errore aggiornamento password')
+    }
   }
 
   function openEditSkill(skill: Skill) {
@@ -264,6 +287,12 @@ export default function AdminPage() {
                         {selectedUser?.id === user.id ? 'Chiudi' : 'Prompt'}
                       </button>
                       <button
+                        onClick={() => { setPasswordUser(passwordUser === user.id ? null : user.id); setNewPassword('') }}
+                        className="text-xs px-3 py-2 border border-gray-200 rounded-lg text-gray-600 active:border-gray-400 transition-colors"
+                      >
+                        Password
+                      </button>
+                      <button
                         onClick={() => deleteUser(user.id)}
                         className="text-xs px-3 py-2 border border-red-200 rounded-lg text-red-500 active:bg-red-50 transition-colors"
                       >
@@ -271,6 +300,25 @@ export default function AdminPage() {
                       </button>
                     </div>
                   </div>
+                  {passwordUser === user.id && (
+                    <div className="mt-3 pt-3 border-t border-gray-100 flex gap-2">
+                      <input
+                        type="password"
+                        value={newPassword}
+                        onChange={e => setNewPassword(e.target.value)}
+                        placeholder="Nuova password (min 6 caratteri)"
+                        className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900"
+                      />
+                      <button
+                        onClick={() => changePassword(user.id)}
+                        disabled={savingPassword || newPassword.length < 6}
+                        className="text-xs px-3 py-2 bg-gray-900 text-white rounded-lg disabled:opacity-40 transition-colors"
+                      >
+                        {savingPassword ? '...' : 'Salva'}
+                      </button>
+                    </div>
+                  )}
+
                   {selectedUser?.id === user.id && (
                     <div className="mt-4 pt-4 border-t border-gray-100 space-y-3">
                       {user.system_prompts.length > 0 ? user.system_prompts.map(sp => (
