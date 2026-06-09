@@ -50,7 +50,7 @@ export async function GET() {
 
     const { data: ambiti } = await supabase
       .from('user_ambiti')
-      .select('user_id, ambito')
+      .select('user_id, ambito, system_prompt_extra')
 
     const { data: authData, error } = await supabase.auth.admin.listUsers()
 
@@ -61,15 +61,24 @@ export async function GET() {
 
     const users = (authData?.users || []).map(u => {
       const config = configs?.find(c => c.user_id === u.id)
-      const userAmbiti = ambiti?.filter(a => a.user_id === u.id).map(a => a.ambito) || []
+      const userAmbiti = ambiti?.filter(a => a.user_id === u.id) || []
+      const base = config?.system_prompt_base || ''
+
+      const system_prompts = userAmbiti.map(a => ({
+        ambito: a.ambito,
+        prompt: a.system_prompt_extra
+          ? `${base}\n\n---\n${a.system_prompt_extra}`
+          : base,
+      }))
 
       return {
         id: u.id,
         email: u.email || '',
         created_at: u.created_at,
         nome: u.user_metadata?.nome || config?.nome_assistente || '',
-        system_prompt: config?.system_prompt_base || '',
-        ambiti: userAmbiti,
+        system_prompt_base: base,
+        system_prompts,
+        ambiti: userAmbiti.map(a => a.ambito),
         approvato: u.app_metadata?.approvato === true,
       }
     })

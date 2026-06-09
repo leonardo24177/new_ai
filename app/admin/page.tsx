@@ -10,7 +10,8 @@ interface User {
   email: string
   created_at: string
   nome: string
-  system_prompt: string
+  system_prompt_base: string
+  system_prompts: { ambito: string; prompt: string }[]
   ambiti: string[]
   approvato: boolean
 }
@@ -271,13 +272,26 @@ export default function AdminPage() {
                     </div>
                   </div>
                   {selectedUser?.id === user.id && (
-                    <div className="mt-4 pt-4 border-t border-gray-100">
-                      <p className="text-xs font-medium text-gray-500 mb-2">System Prompt</p>
-                      <div className="bg-gray-50 rounded-xl p-4">
-                        <pre className="text-xs text-gray-700 whitespace-pre-wrap font-mono leading-relaxed overflow-x-auto">
-                          {user.system_prompt || 'Nessun system prompt configurato'}
-                        </pre>
-                      </div>
+                    <div className="mt-4 pt-4 border-t border-gray-100 space-y-3">
+                      {user.system_prompts.length > 0 ? user.system_prompts.map(sp => (
+                        <div key={sp.ambito}>
+                          <p className="text-xs font-medium text-gray-500 mb-1.5 capitalize">{sp.ambito}</p>
+                          <div className="bg-gray-50 rounded-xl p-4">
+                            <pre className="text-xs text-gray-700 whitespace-pre-wrap font-mono leading-relaxed overflow-x-auto">
+                              {sp.prompt}
+                            </pre>
+                          </div>
+                        </div>
+                      )) : (
+                        <div>
+                          <p className="text-xs font-medium text-gray-500 mb-1.5">Base</p>
+                          <div className="bg-gray-50 rounded-xl p-4">
+                            <pre className="text-xs text-gray-700 whitespace-pre-wrap font-mono leading-relaxed overflow-x-auto">
+                              {user.system_prompt_base || 'Nessun system prompt configurato'}
+                            </pre>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
