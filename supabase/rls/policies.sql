@@ -1,6 +1,7 @@
 -- ============================================================
 -- ROW LEVEL SECURITY — assistente-ai.it
 -- Esegui nel SQL Editor di Supabase (Dashboard → SQL Editor)
+-- Idempotente: può essere rieseguito senza errori
 -- ============================================================
 
 -- ─── ABILITA RLS SU TUTTE LE TABELLE ────────────────────────
@@ -13,7 +14,10 @@ ALTER TABLE skills            ENABLE ROW LEVEL SECURITY;
 ALTER TABLE admins            ENABLE ROW LEVEL SECURITY;
 
 -- ─── user_configs ────────────────────────────────────────────
--- Ogni utente legge e scrive solo la propria riga
+DROP POLICY IF EXISTS "user_configs: lettura propria"      ON user_configs;
+DROP POLICY IF EXISTS "user_configs: scrittura propria"    ON user_configs;
+DROP POLICY IF EXISTS "user_configs: aggiornamento proprio" ON user_configs;
+
 CREATE POLICY "user_configs: lettura propria" ON user_configs
   FOR SELECT USING (auth.uid() = user_id);
 
@@ -24,6 +28,11 @@ CREATE POLICY "user_configs: aggiornamento proprio" ON user_configs
   FOR UPDATE USING (auth.uid() = user_id);
 
 -- ─── user_ambiti ─────────────────────────────────────────────
+DROP POLICY IF EXISTS "user_ambiti: lettura propria"      ON user_ambiti;
+DROP POLICY IF EXISTS "user_ambiti: inserimento proprio"  ON user_ambiti;
+DROP POLICY IF EXISTS "user_ambiti: aggiornamento proprio" ON user_ambiti;
+DROP POLICY IF EXISTS "user_ambiti: eliminazione propria" ON user_ambiti;
+
 CREATE POLICY "user_ambiti: lettura propria" ON user_ambiti
   FOR SELECT USING (auth.uid() = user_id);
 
@@ -37,6 +46,11 @@ CREATE POLICY "user_ambiti: eliminazione propria" ON user_ambiti
   FOR DELETE USING (auth.uid() = user_id);
 
 -- ─── conversations ────────────────────────────────────────────
+DROP POLICY IF EXISTS "conversations: lettura propria"      ON conversations;
+DROP POLICY IF EXISTS "conversations: inserimento proprio"  ON conversations;
+DROP POLICY IF EXISTS "conversations: aggiornamento proprio" ON conversations;
+DROP POLICY IF EXISTS "conversations: eliminazione propria" ON conversations;
+
 CREATE POLICY "conversations: lettura propria" ON conversations
   FOR SELECT USING (auth.uid() = user_id);
 
@@ -50,7 +64,10 @@ CREATE POLICY "conversations: eliminazione propria" ON conversations
   FOR DELETE USING (auth.uid() = user_id);
 
 -- ─── messages ────────────────────────────────────────────────
--- I messaggi appartengono a conversazioni dell'utente
+DROP POLICY IF EXISTS "messages: lettura propria"      ON messages;
+DROP POLICY IF EXISTS "messages: inserimento proprio"  ON messages;
+DROP POLICY IF EXISTS "messages: eliminazione propria" ON messages;
+
 CREATE POLICY "messages: lettura propria" ON messages
   FOR SELECT USING (
     EXISTS (
@@ -79,6 +96,11 @@ CREATE POLICY "messages: eliminazione propria" ON messages
   );
 
 -- ─── user_files ──────────────────────────────────────────────
+DROP POLICY IF EXISTS "user_files: lettura propria"      ON user_files;
+DROP POLICY IF EXISTS "user_files: inserimento proprio"  ON user_files;
+DROP POLICY IF EXISTS "user_files: aggiornamento proprio" ON user_files;
+DROP POLICY IF EXISTS "user_files: eliminazione propria" ON user_files;
+
 CREATE POLICY "user_files: lettura propria" ON user_files
   FOR SELECT USING (auth.uid() = user_id);
 
@@ -92,16 +114,19 @@ CREATE POLICY "user_files: eliminazione propria" ON user_files
   FOR DELETE USING (auth.uid() = user_id);
 
 -- ─── skills ──────────────────────────────────────────────────
--- Lettura pubblica per le skill pubbliche; scrittura solo via service role
+DROP POLICY IF EXISTS "skills: lettura pubblica" ON skills;
+
 CREATE POLICY "skills: lettura pubblica" ON skills
   FOR SELECT USING (pubblica = true);
 
 -- ─── admins ──────────────────────────────────────────────────
--- Solo la service role può leggere/scrivere (le route admin la usano direttamente)
--- Nessuna policy per utenti autenticati normali → accesso negato di default
+-- Nessuna policy per utenti normali: le route admin usano service_role che bypassa RLS
 
 -- ─── STORAGE: bucket user-files ──────────────────────────────
--- Ogni utente accede solo alla propria cartella (path: {user_id}/...)
+DROP POLICY IF EXISTS "storage: upload proprio"    ON storage.objects;
+DROP POLICY IF EXISTS "storage: lettura propria"   ON storage.objects;
+DROP POLICY IF EXISTS "storage: eliminazione propria" ON storage.objects;
+
 CREATE POLICY "storage: upload proprio" ON storage.objects
   FOR INSERT WITH CHECK (
     bucket_id = 'user-files'
