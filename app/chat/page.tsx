@@ -464,19 +464,23 @@ export default function ChatPage() {
     try {
       // ── Recupera il token Google solo se l'utente ha cartelle Drive configurate ──
       const supabase = createClient()
-      const { data: { session } } = await supabase.auth.getSession()
       const { data: { user: currentUser } } = await supabase.auth.getUser()
-      let googleToken: string | null = null
       if (currentUser) {
         const { data: userCfg } = await supabase
           .from('user_configs')
-          .select('drive_folders')
+          .select('drive_folders, google_drive_token, google_drive_token_expiry')
           .eq('user_id', currentUser.id)
           .single()
         const hasDriveFolders = userCfg?.drive_folders && Array.isArray(userCfg.drive_folders) && userCfg.drive_folders.length > 0
-        googleToken = hasDriveFolders ? (session?.provider_token || null) : null
-        if (hasDriveFolders && !googleToken) {
-          toast('Google Drive non disponibile — riconnetti il Drive dal profilo', { icon: '⚠️' })
+        if (hasDriveFolders) {
+          const token = userCfg?.google_drive_token
+          const expiry = userCfg?.google_drive_token_expiry
+            ? new Date(userCfg.google_drive_token_expiry).getTime()
+            : 0
+          const tokenValid = token && (!expiry || expiry > Date.now() + 5 * 60 * 1000)
+          if (!tokenValid) {
+            toast('Google Drive non disponibile — riconnetti il Drive dal profilo', { icon: '⚠️' })
+          }
         }
       }
 
