@@ -12,7 +12,7 @@ SaaS di chat AI personalizzabile per professionisti italiani. Ogni utente config
 | UI | React 19 + Tailwind CSS 4 |
 | Auth + DB + Storage | Supabase (Postgres + Auth + Storage bucket `user-files`) |
 | AI | Anthropic Claude — selezione dinamica Haiku/Sonnet/Opus |
-| File parsing | pdf-parse, mammoth (Word), xlsx (Excel) |
+| File parsing | pdf-parse, mammoth (Word), xlsx (Excel/XLS), jszip (PPTX) |
 | Drive | Google Drive API v3 (OAuth2 + gapi.picker) |
 | Deploy | Vercel |
 
@@ -33,7 +33,7 @@ app/
   api/
     chat/route.ts           ← POST streaming a Claude (route principale)
     conversations/route.ts  ← GET/PATCH/DELETE conversazioni
-    upload/route.ts         ← POST file (PDF/Word/Excel/testo/codice, max 20MB)
+    upload/route.ts         ← POST file (PDF/DOCX/XLSX/XLS/PPTX/immagini/testo/codice, max 20MB)
     links/route.ts          ← POST link con scraping HTML
     onboarding/
       generate/route.ts     ← genera system prompt singolo ambito
@@ -55,19 +55,19 @@ lib/
   model-selector.ts         ← selezione modello per complessità
   model-pricing.ts          ← calcolo costi, label, colori modelli
   onboarding/config.ts      ← professioni, utilizzi, specializzazioni, fonti
-proxy.ts                    ← protegge /chat, /profile, /admin → redirect /login
-  app/
-    in-attesa/page.tsx        ← pagina attesa approvazione admin
-    privacy/page.tsx          ← Privacy Policy GDPR
-    termini/page.tsx          ← Termini di Servizio
-    not-found.tsx             ← pagina 404
-    global-error.tsx          ← error boundary React con Sentry.captureException
-    sentry-example-page/      ← pagina test Sentry (solo sviluppo)
+proxy.ts                      ← protegge /chat, /profile, /admin → redirect /login
+app/
+  in-attesa/page.tsx          ← pagina attesa approvazione admin
+  privacy/page.tsx            ← Privacy Policy GDPR
+  termini/page.tsx            ← Termini di Servizio
+  not-found.tsx               ← pagina 404
+  global-error.tsx            ← error boundary React con Sentry.captureException
+  sentry-example-page/        ← pagina test Sentry (404 in produzione, solo dev)
   api/
     account/
-      delete/route.ts         ← DELETE account + tutti i dati utente (GDPR)
+      delete/route.ts         ← DELETE account + tutti i dati utente (GDPR), batch da 100
     admin/
-      users/route.ts          ← PATCH aggiunge approvazione utente
+      users/route.ts          ← PATCH approva utente o cambia password (new_password)
 instrumentation.ts            ← init Sentry server-side (caricato da Next.js automaticamente)
 instrumentation.client.ts     ← init Sentry client-side (caricato da Next.js automaticamente)
 sentry.client.config.ts       ← config Sentry client (usato da withSentryConfig nel build)
@@ -134,7 +134,12 @@ SENTRY_AUTH_TOKEN               ← token per upload source maps in build
 - **Streaming chat**: la route `/api/chat` usa `ReadableStream` con SSE (`data: {...}\n\n`). Non toccare il formato senza aggiornare il consumer in `chat/page.tsx`.
 - **System prompt**: la concatenazione è `base + ambito_extra + skill_extra`, separati da `\n\n---\n`. Non invertire l'ordine.
 - **Rate limiting**: 60 messaggi/ora per utente, contati sulla tabella `messages` via join su `conversations.user_id`.
+- **File upload — formati supportati**: PDF (con fallback OCR via Claude Haiku se testo < 100 char), DOCX, XLSX, XLS, PPTX (parsing XML via jszip), immagini (JPEG/PNG/GIF/WebP), testo, codice. Formati `.doc`, `.ppt` restituiscono errore esplicito che chiede di convertire.
+- **File upload — OCR**: se `pdf-parse` restituisce < 100 caratteri, il PDF viene inviato a Claude Haiku come documento nativo. Timeout fisso di 20s (`Promise.race`) per rispettare il limite Vercel di 30s.
 - **File**: il testo estratto viene troncato a 50.000 caratteri al momento dell'upload; in chat il contesto per file è troncato a 30.000.
+- **Immagini in chat**: passate a Claude come `image` blocks (non come testo). Download in parallelo con `Promise.all`. Limite: max 5 immagini totali (profilo + chat), max 4MB per immagine. Formati: JPEG, PNG, GIF, WebP. Immagini > 4MB vengono silenziosamente scartate.
+- **Clipboard paste immagini**: `onPaste` sulla textarea — se il clipboard contiene un'immagine, la carica direttamente come allegato chat senza dialog.
+- **Drag & drop file**: handler `onDragOver/onDrop` sul container principale della chat. Max 3 file per drop. Overlay visivo durante il drag. Toast errore include il nome del file specifico che ha fallito.
 - **Lingua**: tutta la UI, i messaggi di errore e i commenti sono in italiano.
 - **Niente console.log** in produzione — usare solo `console.error` per errori reali.
 - **Skills per ambito**: in chat le skill visibili sono filtrate per `ambitoAttivo` — lavoro vede skill della propria professione + skill globali (`professione = null`); studio e personale vedono solo skill globali. Non mostrare tutte le skill indifferentemente dall'ambito.
@@ -149,3 +154,7 @@ SENTRY_AUTH_TOKEN               ← token per upload source maps in build
 - Non rimuovere il rate limiting da `/api/chat` senza aggiungere un'alternativa.
 - Non rinominare `proxy.ts` in `middleware.ts` — in Next.js 16 il nome è cambiato.
 - Non salvare `approvato` in `user_metadata` — è modificabile dal client. Usare sempre `app_metadata` via service role.
+- Non fare download immagini sequenziali in chat — usare sempre `Promise.all` per scaricarle in parallelo.
+- Non aumentare il limite immagini oltre 4MB senza verificare i limiti dell'API Anthropic.
+- Non rimuovere il timeout OCR (20s) — senza, i PDF grandi causano timeout Vercel 504.
+- Non usare `.in()` con array non limitati nella delete account — usare batch da 100.
