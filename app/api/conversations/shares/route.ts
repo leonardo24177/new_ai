@@ -20,7 +20,8 @@ export async function GET() {
     expires_at: s.expires_at,
     has_password: !!s.password_hash,
     created_at: s.created_at,
-    titolo: (s.conversations as { titolo: string | null } | null)?.titolo || 'Conversazione',
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    titolo: (s as any).conversations?.titolo || 'Conversazione',
   }))
 
   return NextResponse.json(shares)
