@@ -146,6 +146,7 @@ export default function ProfilePage() {
   const [successMsg, setSuccessMsg] = useState('')
   const [activeFileAmbito, setActiveFileAmbito] = useState<string>('tutti')
   const [driveFolders, setDriveFolders] = useState<DriveFolder[]>([])
+  const [ttsEnabled, setTtsEnabled] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const folderInputRef = useRef<HTMLInputElement>(null)
   const savedProfessione = useRef<string>('')
@@ -171,10 +172,11 @@ export default function ProfilePage() {
     }
 
     const { data: config } = await supabase
-      .from('user_configs').select('system_prompt_base, drive_folders').eq('user_id', user.id).single()
+      .from('user_configs').select('system_prompt_base, drive_folders, tts_enabled').eq('user_id', user.id).single()
     if (config) {
       setSystemPrompt(config.system_prompt_base)
       if (config.drive_folders) setDriveFolders(config.drive_folders)
+      if (config.tts_enabled) setTtsEnabled(true)
     }
 
     const { data: files } = await supabase
@@ -994,8 +996,40 @@ export default function ProfilePage() {
           </div>
         )}
 
-        {/* Zona pericolosa */}
+        {/* Preferenze */}
         <div className="mt-10 pt-6 border-t border-gray-100">
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Preferenze</p>
+          <div className="bg-white rounded-2xl border border-gray-200 p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-900">Lettura vocale risposte</p>
+                <p className="text-xs text-gray-400 mt-0.5">L'assistente legge le risposte ad alta voce (italiano)</p>
+              </div>
+              <button
+                onClick={async () => {
+                  const newVal = !ttsEnabled
+                  setTtsEnabled(newVal)
+                  const supabase = createClient()
+                  const { data: { user } } = await supabase.auth.getUser()
+                  if (user) {
+                    await supabase.from('user_configs').upsert(
+                      { user_id: user.id, tts_enabled: newVal },
+                      { onConflict: 'user_id' }
+                    )
+                    setSuccessMsg(newVal ? 'Voce attivata' : 'Voce disattivata')
+                    setTimeout(() => setSuccessMsg(''), 2000)
+                  }
+                }}
+                className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${ttsEnabled ? 'bg-blue-500' : 'bg-gray-200'}`}
+              >
+                <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${ttsEnabled ? 'translate-x-5' : 'translate-x-0.5'}`} />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Zona pericolosa */}
+        <div className="mt-6 pt-6 border-t border-gray-100">
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Zona pericolosa</p>
           <div className="bg-white rounded-2xl border border-red-100 p-4">
             <p className="text-sm font-medium text-gray-900 mb-1">Elimina account</p>

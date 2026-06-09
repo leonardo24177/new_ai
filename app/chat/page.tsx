@@ -220,9 +220,18 @@ export default function ChatPage() {
       ? skills.filter(s => s.professione === null)
       : skills
 
+  const ttsInitialized = useRef(false)
+
   useEffect(() => { initChat() }, [])
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
   useEffect(() => { setActiveSkills([]); setShowSkills(false) }, [ambitoAttivo])
+  useEffect(() => {
+    if (!ttsInitialized.current) { ttsInitialized.current = true; return }
+    const supabase = createClient()
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) supabase.from('user_configs').upsert({ user_id: user.id, tts_enabled: ttsEnabled }, { onConflict: 'user_id' })
+    })
+  }, [ttsEnabled])
 
   useEffect(() => {
     const meta = document.querySelector('meta[name=viewport]')
@@ -240,7 +249,7 @@ export default function ChatPage() {
       { data: ambitoLavoro },
       { data: admin },
     ] = await Promise.all([
-      supabase.from('user_configs').select('nome_assistente').eq('user_id', user.id).single(),
+      supabase.from('user_configs').select('nome_assistente, tts_enabled').eq('user_id', user.id).single(),
       supabase.from('user_ambiti').select('ambito').eq('user_id', user.id).eq('attivo', true),
       supabase.from('user_ambiti').select('onboarding_data').eq('user_id', user.id).eq('ambito', 'lavoro').single(),
       supabase.from('admins').select('user_id').eq('user_id', user.id).single(),
@@ -249,6 +258,7 @@ export default function ChatPage() {
     if (!config) { router.push('/onboarding'); return }
 
     setNomeAssistente(config.nome_assistente || 'Assistente')
+    if (config.tts_enabled) setTtsEnabled(true)
     setNomeUtente(user.user_metadata?.nome || user.email?.split('@')[0] || '')
 
     const professioneUtente = ambitoLavoro?.onboarding_data?.professione || ''
