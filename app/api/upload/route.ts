@@ -159,7 +159,26 @@ export async function POST(req: NextRequest) {
         testo_estratto = sheets.join('\n\n').slice(0, 50000)
       }
       else if (file.type === 'application/vnd.openxmlformats-officedocument.presentationml.presentation') {
-        testo_estratto = `[File PowerPoint: ${file.name}]`
+        const JSZip = (await import('jszip')).default
+        const zip = await JSZip.loadAsync(buffer)
+        const slideFiles = Object.keys(zip.files)
+          .filter(name => /^ppt\/slides\/slide\d+\.xml$/.test(name))
+          .sort((a, b) => {
+            const numA = parseInt(a.match(/\d+/)?.[0] || '0')
+            const numB = parseInt(b.match(/\d+/)?.[0] || '0')
+            return numA - numB
+          })
+        const testi: string[] = []
+        for (const slideName of slideFiles) {
+          const xml = await zip.files[slideName].async('text')
+          const matches = xml.match(/<a:t[^>]*>([^<]+)<\/a:t>/g) || []
+          const testoSlide = matches
+            .map(m => m.replace(/<[^>]+>/g, '').trim())
+            .filter(t => t.length > 0)
+            .join(' ')
+          if (testoSlide) testi.push(testoSlide)
+        }
+        testo_estratto = testi.join('\n').slice(0, 50000)
       }
       else if (file.type.startsWith('image/')) {
         testo_estratto = `[Immagine: ${file.name}]`
