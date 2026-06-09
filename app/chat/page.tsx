@@ -76,8 +76,9 @@ function MessageBubble({ message, theme }: { message: Message; theme: typeof AMB
     warningText = parts[0]
     mainContent = parts.slice(1).join('\n\n')
   }
+  const isTyping = !isUser && message.content === ''
   return (
-    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-3`}>
+    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-3 message-appear`}>
       <div className="max-w-[82%]">
         {hasWarning && (
           <div className="mb-2 px-3 py-2 rounded-xl bg-amber-50 border border-amber-200">
@@ -89,7 +90,13 @@ function MessageBubble({ message, theme }: { message: Message; theme: typeof AMB
             ? `${theme.userBubble} rounded-br-sm`
             : 'bg-white text-gray-900 rounded-bl-sm shadow-sm border border-gray-100'
         }`}>
-          {isUser ? (
+          {isTyping ? (
+            <span className="flex items-center gap-1 text-gray-400 py-0.5">
+              <span className="typing-dot" />
+              <span className="typing-dot" />
+              <span className="typing-dot" />
+            </span>
+          ) : isUser ? (
             <span className="whitespace-pre-wrap">{mainContent}</span>
           ) : (
             <ReactMarkdown components={{
@@ -876,7 +883,7 @@ export default function ChatPage() {
             </button>
 
             <button onClick={sendMessage} disabled={!input.trim() || loading}
-              className={`w-9 h-9 ${theme.sendBtn} rounded-xl flex items-center justify-center disabled:opacity-40 transition-colors flex-shrink-0`}>
+              className={`w-9 h-9 ${theme.sendBtn} rounded-xl flex items-center justify-center disabled:opacity-40 transition-all active:scale-[0.88] flex-shrink-0`}>
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
                 <path d="M7 1L7 13M7 1L2 6M7 1L12 6" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>

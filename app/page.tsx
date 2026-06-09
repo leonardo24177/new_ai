@@ -106,7 +106,7 @@ export default function LandingPage() {
         </h2>
         <div className="grid sm:grid-cols-2 gap-5">
           {FEATURES.map(f => (
-            <div key={f.title} className="bg-white border border-gray-200 rounded-2xl p-6">
+            <div key={f.title} className="bg-white border border-gray-200 rounded-2xl p-6 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200">
               <div className="text-2xl mb-3">{f.icon}</div>
               <h3 className="font-semibold text-gray-900 mb-2">{f.title}</h3>
               <p className="text-sm text-gray-500 leading-relaxed">{f.desc}</p>
