@@ -59,6 +59,7 @@ export default function AdminPage() {
   const [selectedUser, setSelectedUser] = useState<User | null>(null)
   const [passwordUser, setPasswordUser] = useState<string | null>(null)
   const [newPassword, setNewPassword] = useState('')
+  const [showNewPassword, setShowNewPassword] = useState(false)
   const [savingPassword, setSavingPassword] = useState(false)
   const [editingSkill, setEditingSkill] = useState<Skill | null>(null)
   const [newSkill, setNewSkill] = useState(false)
@@ -302,13 +303,23 @@ export default function AdminPage() {
                   </div>
                   {passwordUser === user.id && (
                     <div className="mt-3 pt-3 border-t border-gray-100 flex gap-2">
-                      <input
-                        type="password"
-                        value={newPassword}
-                        onChange={e => setNewPassword(e.target.value)}
-                        placeholder="Nuova password (min 6 caratteri)"
-                        className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900"
-                      />
+                      <div className="relative flex-1">
+                        <input
+                          type={showNewPassword ? 'text' : 'password'}
+                          value={newPassword}
+                          onChange={e => setNewPassword(e.target.value)}
+                          placeholder="Nuova password (min 6 caratteri)"
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 pr-9 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowNewPassword(v => !v)}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                          tabIndex={-1}
+                        >
+                          {showNewPassword ? '🙈' : '👁️'}
+                        </button>
+                      </div>
                       <button
                         onClick={() => changePassword(user.id)}
                         disabled={savingPassword || newPassword.length < 6}
