@@ -64,6 +64,10 @@ export async function POST(req: NextRequest) {
     const isCodice = ESTENSIONI_CODICE.includes(estensione) || ESTENSIONI_CODICE.some(e => nomeFile.endsWith(e))
     const isMimeAccettato = MIME_CONSENTITI.includes(file.type) || file.type.startsWith('text/')
 
+    if (file.type === 'application/vnd.ms-powerpoint' || nomeFile.endsWith('.ppt')) {
+      return NextResponse.json({ error: 'Il formato .ppt non è supportato. Converti il file in .pptx o PDF prima di caricarlo.' }, { status: 400 })
+    }
+
     if (!isMimeAccettato && !isCodice) {
       return NextResponse.json({ error: `Tipo file non supportato: ${file.type}` }, { status: 400 })
     }
