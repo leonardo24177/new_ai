@@ -578,7 +578,12 @@ export default function ChatPage() {
     setInput(e.target.value)
   }
 
-  function startRecording() {
+  function toggleRecording() {
+    if (isRecording) {
+      recognitionRef.current?.stop()
+      setIsRecording(false)
+      return
+    }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
     if (!SpeechRecognition) { toast.error('Il tuo browser non supporta il riconoscimento vocale'); return }
@@ -591,16 +596,16 @@ export default function ChatPage() {
       const transcript = e.results[0][0].transcript
       setInput(prev => prev ? prev + ' ' + transcript : transcript)
     }
-    recognition.onerror = () => { setIsRecording(false); toast.error('Errore microfono') }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    recognition.onerror = (e: any) => {
+      setIsRecording(false)
+      if (e.error === 'not-allowed') toast.error('Permesso microfono negato — abilitalo nelle impostazioni del browser')
+      else if (e.error !== 'aborted' && e.error !== 'no-speech') toast.error('Errore microfono')
+    }
     recognition.onend = () => setIsRecording(false)
     recognitionRef.current = recognition
     recognition.start()
     setIsRecording(true)
-  }
-
-  function stopRecording() {
-    recognitionRef.current?.stop()
-    setIsRecording(false)
   }
 
   function speakText(text: string) {
@@ -1028,7 +1033,7 @@ export default function ChatPage() {
             />
 
             <button
-              onPointerDown={startRecording} onPointerUp={stopRecording} onPointerLeave={stopRecording}
+              onClick={toggleRecording}
               className={`w-8 h-8 flex items-center justify-center rounded-xl transition-colors flex-shrink-0 select-none ${
                 isRecording ? 'bg-red-500 text-white animate-pulse' : 'text-gray-400 active:text-gray-600'
               }`}>
