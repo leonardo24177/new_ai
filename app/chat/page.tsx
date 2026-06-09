@@ -187,8 +187,15 @@ export default function ChatPage() {
   const theme = AMBITI_THEME[ambitoAttivo || 'default'] || AMBITI_THEME.default
   const ambitoConfig = AMBITI_CONFIG.find(a => a.value === ambitoAttivo)
 
+  const visibleSkills = ambitoAttivo === 'lavoro'
+    ? skills.filter(s => s.professione === professione || s.professione === null)
+    : ambitoAttivo === 'studio' || ambitoAttivo === 'personale'
+      ? skills.filter(s => s.professione === null)
+      : skills
+
   useEffect(() => { initChat() }, [])
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
+  useEffect(() => { setActiveSkills([]); setShowSkills(false) }, [ambitoAttivo])
 
   useEffect(() => {
     const meta = document.querySelector('meta[name=viewport]')
@@ -706,13 +713,13 @@ export default function ChatPage() {
         </div>
 
         {/* Skill selector */}
-        {skills.length > 0 && (
+        {visibleSkills.length > 0 && (
           <div className="px-3 pb-1.5 flex-shrink-0">
             <div className="flex items-center gap-2 flex-wrap">
               <button onClick={() => setShowSkills(!showSkills)} className="text-xs text-gray-500 active:text-gray-700 flex items-center gap-1 py-1">
                 ✦ Skill {activeSkills.length > 0 && `(${activeSkills.length})`}
               </button>
-              {showSkills && skills.map(skill => (
+              {showSkills && visibleSkills.map(skill => (
                 <button key={skill.id}
                   onClick={() => setActiveSkills(prev => prev.includes(skill.slug) ? prev.filter(s => s !== skill.slug) : [...prev, skill.slug])}
                   className={`text-xs px-3 py-1.5 rounded-full border transition-all ${activeSkills.includes(skill.slug) ? `${theme.badge} border-transparent` : 'bg-white text-gray-600 border-gray-200'}`}>
