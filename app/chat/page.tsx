@@ -371,6 +371,38 @@ export default function ChatPage() {
     }
   }
 
+  async function uploadFileDirectly(file: File) {
+    setUploading(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('tipo_contesto', 'chat')
+      if (ambitoAttivo) formData.append('ambito', ambitoAttivo)
+      const res = await fetch('/api/upload', { method: 'POST', body: formData })
+      const data = await res.json()
+      if (data.error) { toast.error(data.error); return }
+      setFileContexts(prev => [...prev, { id: data.id, nome: data.nome, testo: data.testo_estratto, mime_type: data.mime_type, dimensione: data.dimensione, storage_path: data.storage_path }])
+      toast.success(`"${data.nome}" allegato alla chat`)
+    } catch (e) {
+      console.error(e)
+      toast.error('Errore durante il caricamento')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  function handlePaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
+    const items = Array.from(e.clipboardData.items)
+    const imageItem = items.find(item => item.type.startsWith('image/'))
+    if (!imageItem) return
+    e.preventDefault()
+    const file = imageItem.getAsFile()
+    if (!file) return
+    const ext = file.type === 'image/png' ? 'png' : file.type === 'image/jpeg' ? 'jpg' : file.type === 'image/webp' ? 'webp' : 'img'
+    const namedFile = new File([file], `immagine_incollata.${ext}`, { type: file.type })
+    uploadFileDirectly(namedFile)
+  }
+
   async function sendMessage() {
     if (!input.trim() || loading) return
     setIntroMessage('')
@@ -759,7 +791,7 @@ export default function ChatPage() {
             </button>
             <input ref={fileInputRef} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.jpg,.jpeg,.png,.webp" onChange={handleFileUpload} className="hidden" />
 
-            <textarea ref={textareaRef} value={input} onChange={handleTextareaChange} onKeyDown={handleKeyDown}
+            <textarea ref={textareaRef} value={input} onChange={handleTextareaChange} onKeyDown={handleKeyDown} onPaste={handlePaste}
               placeholder={isRecording ? '🎙️ Sto ascoltando...' : `Scrivi${ambitoAttivo ? ` — ${ambitoConfig?.label}` : ''}...`}
               rows={1}
               className="flex-1 bg-transparent text-sm text-gray-900 placeholder-gray-400 resize-none focus:outline-none py-1 leading-relaxed"
