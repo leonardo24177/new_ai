@@ -596,10 +596,8 @@ export default function ChatPage() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       stream.getTracks().forEach(t => t.stop())
-      toast.success('[DEBUG] getUserMedia OK')
     } catch (err: unknown) {
       const name = (err as DOMException)?.name
-      toast.error(`[DEBUG] getUserMedia errore: ${name}`)
       if (name === 'NotAllowedError' || name === 'PermissionDeniedError') setShowMicHelp(true)
       else toast.error('Impossibile accedere al microfono')
       return
@@ -617,7 +615,6 @@ export default function ChatPage() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     recognition.onerror = (e: any) => {
       setIsRecording(false)
-      toast.error(`[DEBUG] SpeechRecognition errore: ${e.error}`)
       if (e.error === 'not-allowed') setShowMicHelp(true)
       else if (e.error !== 'aborted' && e.error !== 'no-speech') toast.error('Errore microfono')
     }
@@ -757,20 +754,21 @@ export default function ChatPage() {
               return (
                 <div className="text-xs text-gray-700 space-y-3">
                   <div>
-                    <p className="font-semibold mb-1">1. Permesso browser</p>
+                    <p className="font-semibold mb-1">Reimposta il permesso (consigliato)</p>
                     <ol className="space-y-1 list-decimal list-inside text-gray-600">
                       <li>Clicca l'icona a sinistra dell'indirizzo (🔒 o ⊙)</li>
-                      <li>Autorizzazioni sito → <strong>Microfono</strong> → <strong>Consenti</strong></li>
+                      <li>Clicca <strong>Impostazioni sito</strong></li>
+                      <li>Clicca <strong>Reimposta le autorizzazioni</strong></li>
+                      <li>Ricarica la pagina e clicca <strong>Consenti</strong> quando richiesto</li>
                     </ol>
                   </div>
                   <div>
-                    <p className="font-semibold mb-1">2. Permesso Windows (se ancora bloccato)</p>
+                    <p className="font-semibold mb-1">Se il problema persiste</p>
                     <ol className="space-y-1 list-decimal list-inside text-gray-600">
-                      <li>Impostazioni → Privacy → <strong>Microfono</strong></li>
+                      <li>Impostazioni Windows → Privacy → <strong>Microfono</strong></li>
                       <li>Attiva <strong>"Consenti alle app desktop di accedere al microfono"</strong></li>
                     </ol>
                   </div>
-                  <p className="text-gray-500">Poi clicca <strong>Riprova</strong> qui sotto.</p>
                 </div>
               )
             })()}
