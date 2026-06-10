@@ -752,12 +752,23 @@ export default function ChatPage() {
                 </ol>
               )
               return (
-                <ol className="text-xs text-gray-700 space-y-2 list-decimal list-inside">
-                  <li>Clicca l'icona a <strong>sinistra dell'indirizzo</strong> nella barra del browser (🔒 o ⊙)</li>
-                  <li>Clicca <strong>Autorizzazioni sito</strong> (o direttamente <strong>Microfono</strong>)</li>
-                  <li>Imposta <strong>Microfono</strong> su <strong>Consenti</strong></li>
-                  <li>Clicca <strong>Riprova</strong> qui sotto (o <strong>Ricarica</strong> se necessario)</li>
-                </ol>
+                <div className="text-xs text-gray-700 space-y-3">
+                  <div>
+                    <p className="font-semibold mb-1">1. Permesso browser</p>
+                    <ol className="space-y-1 list-decimal list-inside text-gray-600">
+                      <li>Clicca l'icona a sinistra dell'indirizzo (🔒 o ⊙)</li>
+                      <li>Autorizzazioni sito → <strong>Microfono</strong> → <strong>Consenti</strong></li>
+                    </ol>
+                  </div>
+                  <div>
+                    <p className="font-semibold mb-1">2. Permesso Windows (se ancora bloccato)</p>
+                    <ol className="space-y-1 list-decimal list-inside text-gray-600">
+                      <li>Impostazioni → Privacy → <strong>Microfono</strong></li>
+                      <li>Attiva <strong>"Consenti alle app desktop di accedere al microfono"</strong></li>
+                    </ol>
+                  </div>
+                  <p className="text-gray-500">Poi clicca <strong>Riprova</strong> qui sotto.</p>
+                </div>
               )
             })()}
             <div className="mt-5 flex gap-2">
