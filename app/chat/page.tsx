@@ -579,7 +579,7 @@ export default function ChatPage() {
     setInput(e.target.value)
   }
 
-  function toggleRecording() {
+  async function toggleRecording() {
     if (isRecording) {
       recognitionRef.current?.stop()
       setIsRecording(false)
@@ -588,6 +588,17 @@ export default function ChatPage() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
     if (!SpeechRecognition) { toast.error('Il tuo browser non supporta il riconoscimento vocale'); return }
+
+    // Forza il browser a mostrare il dialogo di autorizzazione microfono
+    // prima di avviare SpeechRecognition (che su alcuni browser non lo triggera da solo)
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      stream.getTracks().forEach(t => t.stop())
+    } catch {
+      setShowMicHelp(true)
+      return
+    }
+
     const recognition = new SpeechRecognition()
     recognition.lang = 'it-IT'
     recognition.continuous = false
