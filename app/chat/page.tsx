@@ -740,7 +740,7 @@ export default function ChatPage() {
                   <li>Apri <strong>Impostazioni iPhone</strong></li>
                   <li>Scorri fino a <strong>Safari</strong> (o al tuo browser)</li>
                   <li>Tocca <strong>Microfono</strong> → seleziona <strong>Consenti</strong></li>
-                  <li>Torna qui e <strong>ricarica la pagina</strong></li>
+                  <li>Torna qui e clicca <strong>Riprova</strong></li>
                 </ol>
               )
               if (isAndroid) return (
@@ -748,14 +748,14 @@ export default function ChatPage() {
                   <li>Tocca l'icona <strong>lucchetto 🔒</strong> nella barra dell'indirizzo</li>
                   <li>Tocca <strong>Autorizzazioni</strong> → <strong>Microfono</strong></li>
                   <li>Seleziona <strong>Consenti</strong></li>
-                  <li><strong>Ricarica la pagina</strong></li>
+                  <li>Clicca <strong>Riprova</strong> qui sotto</li>
                 </ol>
               )
               return (
                 <ol className="text-xs text-gray-700 space-y-2 list-decimal list-inside">
                   <li>Clicca l'icona <strong>lucchetto 🔒</strong> nella barra dell'indirizzo</li>
                   <li>Clicca <strong>Microfono</strong> → seleziona <strong>Consenti</strong></li>
-                  <li><strong>Ricarica la pagina</strong></li>
+                  <li>Clicca <strong>Riprova</strong> qui sotto (o <strong>Ricarica</strong> se necessario)</li>
                 </ol>
               )
             })()}
