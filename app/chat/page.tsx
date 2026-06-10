@@ -589,14 +589,10 @@ export default function ChatPage() {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
     if (!SpeechRecognition) { toast.error('Il tuo browser non supporta il riconoscimento vocale'); return }
 
-    // Se il permesso è già stato negato mostra subito le istruzioni senza riprovare
-    try {
-      const perm = await navigator.permissions.query({ name: 'microphone' as PermissionName })
-      if (perm.state === 'denied') { setShowMicHelp(true); return }
-    } catch { /* permissions API non supportata — continua normalmente */ }
-
     // Forza il browser a mostrare il dialogo di autorizzazione microfono
-    // prima di avviare SpeechRecognition (che su alcuni browser non lo triggera da solo)
+    // prima di avviare SpeechRecognition (che su alcuni browser non lo triggera da solo).
+    // Non usiamo navigator.permissions.query perché può restituire stato stale dopo
+    // che l'utente ha riabilitato il permesso senza ricaricare la pagina.
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       stream.getTracks().forEach(t => t.stop())
@@ -763,11 +759,18 @@ export default function ChatPage() {
                 </ol>
               )
             })()}
-            <button
-              onClick={() => window.location.reload()}
-              className="mt-5 w-full bg-gray-900 text-white text-sm font-medium py-2.5 rounded-xl active:opacity-80 transition-opacity">
-              Ricarica la pagina
-            </button>
+            <div className="mt-5 flex gap-2">
+              <button
+                onClick={() => { setShowMicHelp(false); toggleRecording() }}
+                className="flex-1 bg-gray-900 text-white text-sm font-medium py-2.5 rounded-xl active:opacity-80 transition-opacity">
+                Riprova
+              </button>
+              <button
+                onClick={() => window.location.reload()}
+                className="flex-1 bg-gray-100 text-gray-700 text-sm font-medium py-2.5 rounded-xl active:opacity-80 transition-opacity">
+                Ricarica
+              </button>
+            </div>
           </div>
         </div>
       )}
