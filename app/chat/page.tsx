@@ -589,13 +589,21 @@ export default function ChatPage() {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
     if (!SpeechRecognition) { toast.error('Il tuo browser non supporta il riconoscimento vocale'); return }
 
+    // Se il permesso è già stato negato mostra subito le istruzioni senza riprovare
+    try {
+      const perm = await navigator.permissions.query({ name: 'microphone' as PermissionName })
+      if (perm.state === 'denied') { setShowMicHelp(true); return }
+    } catch { /* permissions API non supportata — continua normalmente */ }
+
     // Forza il browser a mostrare il dialogo di autorizzazione microfono
     // prima di avviare SpeechRecognition (che su alcuni browser non lo triggera da solo)
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       stream.getTracks().forEach(t => t.stop())
-    } catch {
-      setShowMicHelp(true)
+    } catch (err: unknown) {
+      const name = (err as DOMException)?.name
+      if (name === 'NotAllowedError' || name === 'PermissionDeniedError') setShowMicHelp(true)
+      else toast.error('Impossibile accedere al microfono')
       return
     }
 
