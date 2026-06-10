@@ -596,8 +596,10 @@ export default function ChatPage() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       stream.getTracks().forEach(t => t.stop())
+      toast.success('[DEBUG] getUserMedia OK')
     } catch (err: unknown) {
       const name = (err as DOMException)?.name
+      toast.error(`[DEBUG] getUserMedia errore: ${name}`)
       if (name === 'NotAllowedError' || name === 'PermissionDeniedError') setShowMicHelp(true)
       else toast.error('Impossibile accedere al microfono')
       return
@@ -615,6 +617,7 @@ export default function ChatPage() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     recognition.onerror = (e: any) => {
       setIsRecording(false)
+      toast.error(`[DEBUG] SpeechRecognition errore: ${e.error}`)
       if (e.error === 'not-allowed') setShowMicHelp(true)
       else if (e.error !== 'aborted' && e.error !== 'no-speech') toast.error('Errore microfono')
     }
