@@ -753,8 +753,9 @@ export default function ChatPage() {
               )
               return (
                 <ol className="text-xs text-gray-700 space-y-2 list-decimal list-inside">
-                  <li>Clicca l'icona <strong>lucchetto 🔒</strong> nella barra dell'indirizzo</li>
-                  <li>Clicca <strong>Microfono</strong> → seleziona <strong>Consenti</strong></li>
+                  <li>Clicca l'icona a <strong>sinistra dell'indirizzo</strong> nella barra del browser (🔒 o ⊙)</li>
+                  <li>Clicca <strong>Autorizzazioni sito</strong> (o direttamente <strong>Microfono</strong>)</li>
+                  <li>Imposta <strong>Microfono</strong> su <strong>Consenti</strong></li>
                   <li>Clicca <strong>Riprova</strong> qui sotto (o <strong>Ricarica</strong> se necessario)</li>
                 </ol>
               )
