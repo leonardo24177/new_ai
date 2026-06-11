@@ -139,7 +139,8 @@ export default function AdminPage() {
   }
 
   async function loadStats() {
-    if (stats) return
+    // Niente cache: i dati vanno ricaricati a ogni apertura del tab,
+    // altrimenti restano quelli della prima visita finché non si ricarica la pagina
     const res = await fetch('/api/admin/stats')
     const data = await res.json()
     setStats(data)

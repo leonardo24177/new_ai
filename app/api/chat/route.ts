@@ -139,7 +139,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Rate limiting: max 60 messaggi/ora per utente
-    const COSTO_MENSILE_MAX = 5.00 // $5/mese per utente
+    const COSTO_MENSILE_MAX = 5.00 // fallback se l'utente non ha una riga in user_limits
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString()
     const primoDelMese = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString()
 
@@ -151,7 +151,7 @@ export async function POST(req: NextRequest) {
     if (userConvIds && userConvIds.length > 0) {
       const ids = userConvIds.map((c: { id: string }) => c.id)
 
-      const [{ count: msgCount }, { data: costoMese }] = await Promise.all([
+      const [{ count: msgCount }, { data: costoMese }, { data: limiteRow }] = await Promise.all([
         supabase
           .from('messages')
           .select('id', { count: 'exact', head: true })
@@ -163,6 +163,11 @@ export async function POST(req: NextRequest) {
           .select('costo_stimato')
           .in('conversation_id', ids)
           .gte('created_at', primoDelMese),
+        supabase
+          .from('user_limits')
+          .select('limite_mensile')
+          .eq('user_id', user.id)
+          .maybeSingle(),
       ])
 
       // +1 per contare anche il messaggio corrente non ancora salvato.
@@ -172,8 +177,9 @@ export async function POST(req: NextRequest) {
         return new Response(JSON.stringify({ error: 'Limite orario raggiunto. Riprova tra poco.' }), { status: 429 })
       }
 
+      const limiteMensile = Number(limiteRow?.limite_mensile) || COSTO_MENSILE_MAX
       const totaleSpeso = (costoMese || []).reduce((sum: number, m: { costo_stimato: number | null }) => sum + (m.costo_stimato || 0), 0)
-      if (totaleSpeso >= COSTO_MENSILE_MAX) {
+      if (totaleSpeso >= limiteMensile) {
         return new Response(JSON.stringify({ error: 'Limite mensile raggiunto. Contatta il supporto per aumentare il tuo piano.' }), { status: 429 })
       }
     }
