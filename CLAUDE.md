@@ -195,3 +195,4 @@ SENTRY_AUTH_TOKEN               ← token per upload source maps in build
 - Non passare `google_access_token` dal client al server — il token Drive viene sempre letto da `user_configs` server-side.
 - Non hardcodare model ID — usare sempre `MODELS.haiku/sonnet/opus` da `lib/model-pricing.ts`.
 - Non rimuovere `package-lock.json` dal repo — Vercel usa `npm ci` che richiede il lockfile per build deterministici.
+- Non creare client "service role" con `createServerClient` di `@supabase/ssr` + cookie: se nei cookie c'è una sessione, le query Postgres usano il JWT dell'utente (la service role key resta solo nell'header `apikey`) e la RLS si applica. Per bypassare la RLS usare sempre `createClient` puro di `@supabase/supabase-js` con la service role key, senza cookie; il client SSR serve solo per `auth.getUser()`.
