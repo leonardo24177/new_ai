@@ -14,6 +14,7 @@ interface User {
   system_prompts: { ambito: string; prompt: string }[]
   ambiti: string[]
   approvato: boolean
+  limite_mensile: number
 }
 
 interface Skill {
@@ -66,6 +67,7 @@ function actionColor(action: string): string {
     case 'share_revoke':  return 'bg-orange-100 text-orange-700'
     case 'account_delete': return 'bg-red-100 text-red-700'
     case 'user_approved': return 'bg-teal-100 text-teal-700'
+    case 'limit_changed': return 'bg-amber-100 text-amber-700'
     default:              return 'bg-gray-100 text-gray-600'
   }
 }
@@ -84,6 +86,8 @@ function metadataSummary(action: string, meta: Record<string, unknown>): string 
       return 'account eliminato'
     case 'user_approved':
       return `target=${String(meta.target_user_id).slice(0, 8)}… approvato=${meta.approvato}`
+    case 'limit_changed':
+      return `target=${String(meta.target_user_id).slice(0, 8)}… limite=$${meta.limite_mensile}/mese`
     default:
       return JSON.stringify(meta).slice(0, 80)
   }
@@ -101,6 +105,9 @@ export default function AdminPage() {
   const [newPassword, setNewPassword] = useState('')
   const [showNewPassword, setShowNewPassword] = useState(false)
   const [savingPassword, setSavingPassword] = useState(false)
+  const [limitUser, setLimitUser] = useState<string | null>(null)
+  const [newLimit, setNewLimit] = useState('')
+  const [savingLimit, setSavingLimit] = useState(false)
   const [editingSkill, setEditingSkill] = useState<Skill | null>(null)
   const [newSkill, setNewSkill] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -237,6 +244,28 @@ export default function AdminPage() {
     }
   }
 
+  async function changeLimit(userId: string) {
+    const limite = Number(newLimit)
+    if (!Number.isFinite(limite) || limite <= 0 || limite > 1000) return
+    setSavingLimit(true)
+    const res = await fetch('/api/admin/users', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: userId, limite_mensile: limite }),
+    })
+    setSavingLimit(false)
+    if (res.ok) {
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, limite_mensile: limite } : u))
+      setLimitUser(null)
+      setNewLimit('')
+      setSuccessMsg('Limite aggiornato!')
+      setTimeout(() => setSuccessMsg(''), 2000)
+    } else {
+      const data = await res.json()
+      alert(data.error || 'Errore aggiornamento limite')
+    }
+  }
+
   function openEditSkill(skill: Skill) {
     setEditingSkill(skill)
     setSkillForm({ slug: skill.slug, label: skill.label, extra_sys: skill.extra_sys, categoria: skill.categoria, pubblica: skill.pubblica, professione: skill.professione || 'generale' })
@@ -334,7 +363,7 @@ export default function AdminPage() {
                       </div>
                       <p className="text-xs text-gray-400">{user.email}</p>
                       <p className="text-xs text-gray-300 mt-0.5">
-                        {new Date(user.created_at).toLocaleDateString('it-IT')}
+                        {new Date(user.created_at).toLocaleDateString('it-IT')} · limite ${user.limite_mensile.toFixed(2)}/mese
                       </p>
                     </div>
                     {/* Bottoni verticali su mobile per più spazio */}
@@ -360,6 +389,12 @@ export default function AdminPage() {
                         className="text-xs px-3 py-2 border border-gray-200 rounded-lg text-gray-600 active:border-gray-400 transition-colors"
                       >
                         Password
+                      </button>
+                      <button
+                        onClick={() => { setLimitUser(limitUser === user.id ? null : user.id); setNewLimit(String(user.limite_mensile)) }}
+                        className="text-xs px-3 py-2 border border-gray-200 rounded-lg text-gray-600 active:border-gray-400 transition-colors"
+                      >
+                        Limite
                       </button>
                       <button
                         onClick={() => deleteUser(user.id)}
@@ -394,6 +429,28 @@ export default function AdminPage() {
                         className="text-xs px-3 py-2 bg-gray-900 text-white rounded-lg disabled:opacity-40 transition-colors"
                       >
                         {savingPassword ? '...' : 'Salva'}
+                      </button>
+                    </div>
+                  )}
+
+                  {limitUser === user.id && (
+                    <div className="mt-3 pt-3 border-t border-gray-100 flex gap-2 items-center">
+                      <span className="text-xs text-gray-500 flex-shrink-0">Limite mensile $</span>
+                      <input
+                        type="number"
+                        min="0.5"
+                        max="1000"
+                        step="0.5"
+                        value={newLimit}
+                        onChange={e => setNewLimit(e.target.value)}
+                        className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900"
+                      />
+                      <button
+                        onClick={() => changeLimit(user.id)}
+                        disabled={savingLimit || !Number.isFinite(Number(newLimit)) || Number(newLimit) <= 0 || Number(newLimit) > 1000}
+                        className="text-xs px-3 py-2 bg-gray-900 text-white rounded-lg disabled:opacity-40 transition-colors"
+                      >
+                        {savingLimit ? '...' : 'Salva'}
                       </button>
                     </div>
                   )}

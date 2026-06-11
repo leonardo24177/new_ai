@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
 import { selectModel } from '@/lib/model-selector'
-import { calcolaCosto } from '@/lib/model-pricing'
+import { calcolaCosto, COSTO_MENSILE_DEFAULT } from '@/lib/model-pricing'
 import { logAction } from '@/lib/audit'
 
 const client = new Anthropic({
@@ -139,7 +139,6 @@ export async function POST(req: NextRequest) {
     }
 
     // Rate limiting: max 60 messaggi/ora per utente
-    const COSTO_MENSILE_MAX = 5.00 // fallback se l'utente non ha una riga in user_limits
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString()
     const primoDelMese = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString()
 
@@ -177,7 +176,7 @@ export async function POST(req: NextRequest) {
         return new Response(JSON.stringify({ error: 'Limite orario raggiunto. Riprova tra poco.' }), { status: 429 })
       }
 
-      const limiteMensile = Number(limiteRow?.limite_mensile) || COSTO_MENSILE_MAX
+      const limiteMensile = Number(limiteRow?.limite_mensile) || COSTO_MENSILE_DEFAULT
       const totaleSpeso = (costoMese || []).reduce((sum: number, m: { costo_stimato: number | null }) => sum + (m.costo_stimato || 0), 0)
       if (totaleSpeso >= limiteMensile) {
         return new Response(JSON.stringify({ error: 'Limite mensile raggiunto. Contatta il supporto per aumentare il tuo piano.' }), { status: 429 })

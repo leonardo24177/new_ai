@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { logAction } from '@/lib/audit'
+import { COSTO_MENSILE_DEFAULT } from '@/lib/model-pricing'
 
 async function createServiceClient() {
   const cookieStore = await cookies()
@@ -53,6 +54,10 @@ export async function GET() {
       .from('user_ambiti')
       .select('user_id, ambito, system_prompt_extra')
 
+    const { data: limits } = await supabase
+      .from('user_limits')
+      .select('user_id, limite_mensile')
+
     const { data: authData, error } = await supabase.auth.admin.listUsers({ page: 1, perPage: 1000 })
 
     if (error) {
@@ -81,6 +86,7 @@ export async function GET() {
         system_prompts,
         ambiti: userAmbiti.map(a => a.ambito),
         approvato: u.app_metadata?.approvato === true,
+        limite_mensile: Number(limits?.find(l => l.user_id === u.id)?.limite_mensile) || COSTO_MENSILE_DEFAULT,
       }
     })
 
@@ -99,9 +105,27 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: 'Non autorizzato' }, { status: 403 })
     }
 
-    const { user_id, approvato, new_password } = await req.json()
+    const { user_id, approvato, new_password, limite_mensile } = await req.json()
     if (!user_id) {
       return NextResponse.json({ error: 'user_id mancante' }, { status: 400 })
+    }
+
+    if (limite_mensile !== undefined) {
+      const limite = Number(limite_mensile)
+      if (!Number.isFinite(limite) || limite <= 0 || limite > 1000) {
+        return NextResponse.json({ error: 'Limite non valido (deve essere tra $0 e $1000)' }, { status: 400 })
+      }
+      const { error } = await supabase
+        .from('user_limits')
+        .upsert({ user_id, limite_mensile: limite })
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+      const { data: { user: adminUser } } = await supabase.auth.getUser()
+      logAction(adminUser?.id || '', adminUser?.email || '', 'limit_changed', {
+        target_user_id: user_id, limite_mensile: limite,
+      }).catch(() => {})
+
+      return NextResponse.json({ success: true })
     }
 
     if (new_password !== undefined) {

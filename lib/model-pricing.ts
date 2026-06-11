@@ -7,6 +7,9 @@ export const MODELS = {
   opus: 'claude-opus-4-8',
 } as const
 
+// Tetto di costo mensile di default ($/mese); override per utente in user_limits
+export const COSTO_MENSILE_DEFAULT = 5.0
+
 export const MODEL_PRICING: Record<string, { input: number; output: number }> = {
   'claude-haiku-4-5-20251001': { input: 0.80, output: 4.00 },
   'claude-sonnet-4-6': { input: 3.00, output: 15.00 },
