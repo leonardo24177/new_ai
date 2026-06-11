@@ -1,23 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
 import { createClient } from '@supabase/supabase-js'
+import { createClient as createServerSupabase } from '@/lib/supabase/server'
 
 async function checkAdmin() {
-  const cookieStore = await cookies()
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    {
-      cookies: {
-        getAll() { return cookieStore.getAll() },
-        setAll(c) { try { c.forEach(({ name, value, options }) => cookieStore.set(name, value, options)) } catch {} },
-      },
-    }
-  )
+  const supabase = await createServerSupabase()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return false
-  const { data: admin } = await supabase.from('admins').select('user_id').eq('user_id', user.id).single()
+  // Check su admins via service role: col JWT utente la RLS nasconderebbe la tabella
+  const service = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  )
+  const { data: admin } = await service.from('admins').select('user_id').eq('user_id', user.id).single()
   return !!admin
 }
 

@@ -1,37 +1,23 @@
 import { NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
+import { createClient as createServiceClient } from '@supabase/supabase-js'
+import { createClient } from '@/lib/supabase/server'
 import { modelLabel } from '@/lib/model-pricing'
-
-async function createServiceClient() {
-  const cookieStore = await cookies()
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    {
-      cookies: {
-        getAll() { return cookieStore.getAll() },
-        setAll(cookiesToSet) {
-          try {
-            cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
-            )
-          } catch {}
-        },
-      },
-    }
-  )
-}
 
 export async function GET() {
   try {
-    const supabase = await createServiceClient()
-
-    // Verifica admin
+    // Il client SSR serve solo a identificare il chiamante: le query usano
+    // un client service role puro, altrimenti viaggiano col JWT dell'admin
+    // e la RLS mostra solo i suoi dati.
+    const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Non autenticato' }, { status: 401 })
 
-    const { data: admin } = await supabase
+    const service = createServiceClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    )
+
+    const { data: admin } = await service
       .from('admins')
       .select('user_id')
       .eq('user_id', user.id)
@@ -40,7 +26,7 @@ export async function GET() {
     if (!admin) return NextResponse.json({ error: 'Non autorizzato' }, { status: 403 })
 
     // Statistiche globali — conversation_id aggiunto per collegare i messaggi agli utenti
-    const { data: globalStats } = await supabase
+    const { data: globalStats } = await service
       .from('messages')
       .select('modello, tokens_input, tokens_output, costo_stimato, created_at, conversation_id')
       .eq('ruolo', 'assistant')
@@ -75,7 +61,7 @@ export async function GET() {
     }
 
     // Costo per utente
-    const { data: conversations } = await supabase
+    const { data: conversations } = await service
       .from('conversations')
       .select('id, user_id')
 

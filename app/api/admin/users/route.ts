@@ -1,64 +1,53 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
+import { createClient as createServiceClient } from '@supabase/supabase-js'
+import { createClient } from '@/lib/supabase/server'
 import { logAction } from '@/lib/audit'
 import { COSTO_MENSILE_DEFAULT } from '@/lib/model-pricing'
 
-async function createServiceClient() {
-  const cookieStore = await cookies()
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    {
-      cookies: {
-        getAll() { return cookieStore.getAll() },
-        setAll(cookiesToSet) {
-          try {
-            cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
-            )
-          } catch {}
-        },
-      },
-    }
-  )
-}
-
+// Il client SSR (cookie di sessione) serve solo a identificare il chiamante:
+// le query devono usare un client service role puro, altrimenti viaggiano
+// col JWT dell'admin e la RLS le filtra/blocca.
 async function checkAdmin() {
-  const supabase = await createServiceClient()
+  const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
 
-  const { data: admin } = await supabase
+  const service = createServiceClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  )
+
+  const { data: admin } = await service
     .from('admins')
     .select('user_id')
     .eq('user_id', user.id)
     .single()
 
-  return admin ? supabase : null
+  return admin ? { service, adminUser: user } : null
 }
 
 // GET — lista utenti
 export async function GET() {
   try {
-    const supabase = await checkAdmin()
-    if (!supabase) {
+    const ctx = await checkAdmin()
+    if (!ctx) {
       return NextResponse.json({ error: 'Non autorizzato' }, { status: 403 })
     }
+    const { service } = ctx
 
-    const { data: configs } = await supabase
+    const { data: configs } = await service
       .from('user_configs')
       .select('user_id, system_prompt_base, nome_assistente, updated_at')
 
-    const { data: ambiti } = await supabase
+    const { data: ambiti } = await service
       .from('user_ambiti')
       .select('user_id, ambito, system_prompt_extra')
 
-    const { data: limits } = await supabase
+    const { data: limits } = await service
       .from('user_limits')
       .select('user_id, limite_mensile')
 
-    const { data: authData, error } = await supabase.auth.admin.listUsers({ page: 1, perPage: 1000 })
+    const { data: authData, error } = await service.auth.admin.listUsers({ page: 1, perPage: 1000 })
 
     if (error) {
       console.error('Errore listUsers:', error)
@@ -100,10 +89,11 @@ export async function GET() {
 // PATCH — approva o revoca utente
 export async function PATCH(req: NextRequest) {
   try {
-    const supabase = await checkAdmin()
-    if (!supabase) {
+    const ctx = await checkAdmin()
+    if (!ctx) {
       return NextResponse.json({ error: 'Non autorizzato' }, { status: 403 })
     }
+    const { service, adminUser } = ctx
 
     const { user_id, approvato, new_password, limite_mensile } = await req.json()
     if (!user_id) {
@@ -115,13 +105,12 @@ export async function PATCH(req: NextRequest) {
       if (!Number.isFinite(limite) || limite <= 0 || limite > 1000) {
         return NextResponse.json({ error: 'Limite non valido (deve essere tra $0 e $1000)' }, { status: 400 })
       }
-      const { error } = await supabase
+      const { error } = await service
         .from('user_limits')
         .upsert({ user_id, limite_mensile: limite })
       if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-      const { data: { user: adminUser } } = await supabase.auth.getUser()
-      logAction(adminUser?.id || '', adminUser?.email || '', 'limit_changed', {
+      logAction(adminUser.id, adminUser.email || '', 'limit_changed', {
         target_user_id: user_id, limite_mensile: limite,
       }).catch(() => {})
 
@@ -132,7 +121,7 @@ export async function PATCH(req: NextRequest) {
       if (typeof new_password !== 'string' || new_password.length < 8) {
         return NextResponse.json({ error: 'Password troppo corta (min 8 caratteri)' }, { status: 400 })
       }
-      const { error } = await supabase.auth.admin.updateUserById(user_id, { password: new_password })
+      const { error } = await service.auth.admin.updateUserById(user_id, { password: new_password })
       if (error) return NextResponse.json({ error: error.message }, { status: 500 })
       return NextResponse.json({ success: true })
     }
@@ -141,7 +130,7 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: 'Parametri mancanti' }, { status: 400 })
     }
 
-    const { error } = await supabase.auth.admin.updateUserById(user_id, {
+    const { error } = await service.auth.admin.updateUserById(user_id, {
       app_metadata: { approvato },
     })
 
@@ -149,8 +138,7 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    const { data: { user: adminUser } } = await supabase.auth.getUser()
-    logAction(adminUser?.id || '', adminUser?.email || '', 'user_approved', {
+    logAction(adminUser.id, adminUser.email || '', 'user_approved', {
       target_user_id: user_id, approvato,
     }).catch(() => {})
 
@@ -164,8 +152,8 @@ export async function PATCH(req: NextRequest) {
 // DELETE — elimina utente
 export async function DELETE(req: NextRequest) {
   try {
-    const supabase = await checkAdmin()
-    if (!supabase) {
+    const ctx = await checkAdmin()
+    if (!ctx) {
       return NextResponse.json({ error: 'Non autorizzato' }, { status: 403 })
     }
 
@@ -174,7 +162,7 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: 'user_id mancante' }, { status: 400 })
     }
 
-    const { error } = await supabase.auth.admin.deleteUser(user_id)
+    const { error } = await ctx.service.auth.admin.deleteUser(user_id)
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
