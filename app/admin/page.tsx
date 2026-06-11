@@ -39,6 +39,7 @@ const PROFESSIONI = [
   { value: 'architetto', label: '📐 Architetto' },
   { value: 'revisore_contabile', label: '📊 Revisore contabile' },
   { value: 'notaio', label: '📜 Notaio' },
+  { value: 'editore', label: '📖 Editore / Editor' },
 ]
 
 interface AuditLog {
