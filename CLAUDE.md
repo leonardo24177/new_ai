@@ -44,6 +44,7 @@ app/
     admin/
       users/route.ts        ← GET/DELETE utenti (richiede tabella admins)
       stats/route.ts        ← GET statistiche costi per modello/utente/giorno
+      conversations/[id]/route.ts ← GET conversazione + messaggi (viewer chat nel tab Audit)
     conversations/
       [id]/share/route.ts   ← GET/POST/DELETE link condivisione (richiede auth)
     conv/

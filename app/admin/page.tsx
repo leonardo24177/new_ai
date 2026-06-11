@@ -50,6 +50,15 @@ interface AuditLog {
   created_at: string
 }
 
+interface ConvMessage {
+  id: string
+  ruolo: 'user' | 'assistant'
+  contenuto: string
+  modello: string | null
+  costo_stimato: number | null
+  created_at: string
+}
+
 interface Stats {
   totale_messaggi: number
   totale_costo: number
@@ -117,6 +126,10 @@ export default function AdminPage() {
   const [auditLoading, setAuditLoading] = useState(false)
   const [auditOffset, setAuditOffset] = useState(0)
   const [auditFilters, setAuditFilters] = useState({ action: '', user_email: '', date_from: '', date_to: '' })
+  const [convLogId, setConvLogId] = useState<string | null>(null)
+  const [convData, setConvData] = useState<{ titolo: string; messaggi: ConvMessage[] } | null>(null)
+  const [convLoading, setConvLoading] = useState(false)
+  const [convError, setConvError] = useState('')
   const [skillForm, setSkillForm] = useState({
     slug: '', label: '', extra_sys: '', categoria: 'generale', pubblica: true, professione: 'generale'
   })
@@ -171,6 +184,29 @@ export default function AdminPage() {
     }
     setAuditTotal(data.total || 0)
     setAuditLoading(false)
+  }
+
+  async function toggleConversation(log: AuditLog) {
+    const conversationId = log.metadata?.conversation_id
+    if (!conversationId) return
+    if (convLogId === log.id) {
+      setConvLogId(null)
+      setConvData(null)
+      setConvError('')
+      return
+    }
+    setConvLogId(log.id)
+    setConvData(null)
+    setConvError('')
+    setConvLoading(true)
+    const res = await fetch(`/api/admin/conversations/${conversationId}`)
+    const data = await res.json()
+    if (!res.ok) {
+      setConvError(data.error || 'Errore caricamento conversazione')
+    } else {
+      setConvData({ titolo: data.conversazione?.titolo || 'Senza titolo', messaggi: data.messaggi || [] })
+    }
+    setConvLoading(false)
   }
 
   async function saveSkill() {
@@ -844,8 +880,14 @@ export default function AdminPage() {
               </div>
             ) : (
               <div className="space-y-2">
-                {auditLogs.map(log => (
-                  <div key={log.id} className="bg-white rounded-2xl border border-gray-200 p-3">
+                {auditLogs.map(log => {
+                  const hasConv = !!log.metadata?.conversation_id
+                  return (
+                  <div
+                    key={log.id}
+                    onClick={() => hasConv && toggleConversation(log)}
+                    className={`bg-white rounded-2xl border p-3 transition-colors ${hasConv ? 'border-gray-200 cursor-pointer active:bg-gray-50' : 'border-gray-200'} ${convLogId === log.id ? 'border-gray-900' : ''}`}
+                  >
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap mb-1">
@@ -853,6 +895,11 @@ export default function AdminPage() {
                             {log.action}
                           </span>
                           <span className="text-xs text-gray-500 truncate">{log.user_email || log.user_id?.slice(0, 8)}</span>
+                          {hasConv && (
+                            <span className="text-xs text-gray-400">
+                              {convLogId === log.id ? '▾ chiudi chat' : '▸ leggi chat'}
+                            </span>
+                          )}
                         </div>
                         <p className="text-xs text-gray-400 font-mono truncate">
                           {metadataSummary(log.action, log.metadata)}
@@ -862,8 +909,56 @@ export default function AdminPage() {
                         {new Date(log.created_at).toLocaleString('it-IT', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
                       </p>
                     </div>
+
+                    {convLogId === log.id && (
+                      <div className="mt-3 pt-3 border-t border-gray-100" onClick={e => e.stopPropagation()}>
+                        {convLoading ? (
+                          <p className="text-xs text-gray-400 py-2">Caricamento conversazione...</p>
+                        ) : convError ? (
+                          <p className="text-xs text-red-500 py-2">{convError}</p>
+                        ) : convData ? (
+                          <div>
+                            <p className="text-xs font-medium text-gray-700 mb-3">
+                              💬 {convData.titolo} · {convData.messaggi.length} messaggi
+                            </p>
+                            <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
+                              {convData.messaggi.map(msg => (
+                                <div
+                                  key={msg.id}
+                                  className={`rounded-xl p-3 ${msg.ruolo === 'user' ? 'bg-gray-100 ml-6' : 'bg-blue-50 mr-6'}`}
+                                >
+                                  <div className="flex items-center gap-2 mb-1 flex-wrap">
+                                    <span className="text-xs font-medium text-gray-500">
+                                      {msg.ruolo === 'user' ? 'Utente' : 'Assistente'}
+                                    </span>
+                                    {msg.ruolo === 'assistant' && msg.modello && (
+                                      <span className={`text-xs px-1.5 py-0.5 rounded ${modelColor(msg.modello)}`}>
+                                        {modelLabel(msg.modello)}
+                                      </span>
+                                    )}
+                                    {msg.ruolo === 'assistant' && msg.costo_stimato != null && (
+                                      <span className="text-xs text-gray-400">{formatCosto(msg.costo_stimato)}</span>
+                                    )}
+                                    <span className="text-xs text-gray-300 ml-auto">
+                                      {new Date(msg.created_at).toLocaleString('it-IT', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                                    </span>
+                                  </div>
+                                  <p className="text-xs text-gray-700 whitespace-pre-wrap leading-relaxed break-words">
+                                    {msg.contenuto}
+                                  </p>
+                                </div>
+                              ))}
+                              {convData.messaggi.length === 0 && (
+                                <p className="text-xs text-gray-400 py-2">Nessun messaggio in questa conversazione</p>
+                              )}
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    )}
                   </div>
-                ))}
+                  )
+                })}
 
                 {auditLogs.length < auditTotal && (
                   <button
