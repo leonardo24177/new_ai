@@ -133,6 +133,11 @@ export async function POST(req: NextRequest) {
       return new Response(JSON.stringify({ error: 'Non autenticato' }), { status: 401 })
     }
 
+    // Il proxy blocca solo le pagine: il check approvazione va ripetuto sulle API
+    if (user.app_metadata?.approvato !== true) {
+      return new Response(JSON.stringify({ error: 'Account in attesa di approvazione' }), { status: 403 })
+    }
+
     // Rate limiting: max 60 messaggi/ora per utente
     const COSTO_MENSILE_MAX = 5.00 // $5/mese per utente
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString()
@@ -182,6 +187,10 @@ export async function POST(req: NextRequest) {
       ambito_attivo,
     } = await req.json()
 
+    // Whitelist: ambito_attivo viene interpolato in un filtro PostgREST (.or)
+    const AMBITI_VALIDI = ['lavoro', 'studio', 'personale']
+    const ambitoAttivo: string | null = AMBITI_VALIDI.includes(ambito_attivo) ? ambito_attivo : null
+
     // 1. Recupera system prompt base
     const { data: config } = await supabase
       .from('user_configs')
@@ -202,12 +211,12 @@ export async function POST(req: NextRequest) {
     const professione = ambitoLavoro?.onboarding_data?.professione || ''
 
     // 3. Inietta system prompt extra dell'ambito attivo
-    if (ambito_attivo) {
+    if (ambitoAttivo) {
       const { data: ambitoData } = await supabase
         .from('user_ambiti')
         .select('system_prompt_extra')
         .eq('user_id', user.id)
-        .eq('ambito', ambito_attivo)
+        .eq('ambito', ambitoAttivo)
         .single()
 
       if (ambitoData?.system_prompt_extra) {
@@ -251,8 +260,8 @@ export async function POST(req: NextRequest) {
       .eq('user_id', user.id)
       .eq('tipo_contesto', 'profile')
 
-    if (ambito_attivo) {
-      profileFilesQuery = profileFilesQuery.or(`ambito.eq.${ambito_attivo},ambito.is.null`)
+    if (ambitoAttivo) {
+      profileFilesQuery = profileFilesQuery.or(`ambito.eq.${ambitoAttivo},ambito.is.null`)
     }
 
     const { data: profileFiles } = await profileFilesQuery
@@ -458,7 +467,7 @@ export async function POST(req: NextRequest) {
               costo_stimato: costoStimato,
             })
             logAction(user.id, user.email || '', 'chat_message', {
-              model, ambito: ambito_attivo, conversation_id,
+              model, ambito: ambitoAttivo, conversation_id,
               tokens_input: inputTokens, tokens_output: outputTokens,
             }).catch(() => {})
           }

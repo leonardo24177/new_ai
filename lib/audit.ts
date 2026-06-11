@@ -7,6 +7,7 @@ export type AuditAction =
   | 'share_revoke'
   | 'account_delete'
   | 'user_approved'
+  | 'onboarding_generate'
 
 export async function logAction(
   userId: string,

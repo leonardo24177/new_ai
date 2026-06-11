@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
 import { MODELS } from '@/lib/model-pricing'
+import { logAction } from '@/lib/audit'
+import { superaLimiteOrario } from '@/lib/rate-limit'
 
 const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
@@ -19,6 +21,12 @@ export async function POST(req: NextRequest) {
     if (!user) {
       return NextResponse.json({ error: 'Non autenticato' }, { status: 401 })
     }
+
+    // Rate limiting: ogni chiamata costa una generazione Sonnet — max 10/ora
+    if (await superaLimiteOrario(user.id, 'onboarding_generate', 10)) {
+      return NextResponse.json({ error: 'Limite orario di generazioni raggiunto. Riprova più tardi.' }, { status: 429 })
+    }
+    logAction(user.id, user.email || '', 'onboarding_generate', { route: 'generate' }).catch(() => {})
 
     const data = await req.json()
 

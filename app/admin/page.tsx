@@ -217,7 +217,7 @@ export default function AdminPage() {
   }
 
   async function changePassword(userId: string) {
-    if (!newPassword || newPassword.length < 6) return
+    if (!newPassword || newPassword.length < 8) return
     setSavingPassword(true)
     const res = await fetch('/api/admin/users', {
       method: 'PATCH',
@@ -375,7 +375,7 @@ export default function AdminPage() {
                           type={showNewPassword ? 'text' : 'password'}
                           value={newPassword}
                           onChange={e => setNewPassword(e.target.value)}
-                          placeholder="Nuova password (min 6 caratteri)"
+                          placeholder="Nuova password (min 8 caratteri)"
                           className="w-full border border-gray-300 rounded-lg px-3 py-2 pr-9 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900"
                         />
                         <button
@@ -389,7 +389,7 @@ export default function AdminPage() {
                       </div>
                       <button
                         onClick={() => changePassword(user.id)}
-                        disabled={savingPassword || newPassword.length < 6}
+                        disabled={savingPassword || newPassword.length < 8}
                         className="text-xs px-3 py-2 bg-gray-900 text-white rounded-lg disabled:opacity-40 transition-colors"
                       >
                         {savingPassword ? '...' : 'Salva'}

@@ -105,8 +105,8 @@ export async function PATCH(req: NextRequest) {
     }
 
     if (new_password !== undefined) {
-      if (typeof new_password !== 'string' || new_password.length < 6) {
-        return NextResponse.json({ error: 'Password troppo corta (min 6 caratteri)' }, { status: 400 })
+      if (typeof new_password !== 'string' || new_password.length < 8) {
+        return NextResponse.json({ error: 'Password troppo corta (min 8 caratteri)' }, { status: 400 })
       }
       const { error } = await supabase.auth.admin.updateUserById(user_id, { password: new_password })
       if (error) return NextResponse.json({ error: error.message }, { status: 500 })

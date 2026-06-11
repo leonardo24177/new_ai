@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { MODELS } from '@/lib/model-pricing'
 import { logAction } from '@/lib/audit'
+import { superaLimiteOrario } from '@/lib/rate-limit'
 
 export async function POST(req: NextRequest) {
   try {
@@ -13,9 +14,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Non autenticato' }, { status: 401 })
     }
 
+    // Il proxy blocca solo le pagine: il check approvazione va ripetuto sulle API
+    if (user.app_metadata?.approvato !== true) {
+      return NextResponse.json({ error: 'Account in attesa di approvazione' }, { status: 403 })
+    }
+
+    // Rate limiting: l'OCR sui PDF scansionati chiama Claude — max 30 upload/ora
+    if (await superaLimiteOrario(user.id, 'file_upload', 30)) {
+      return NextResponse.json({ error: 'Limite orario di caricamenti raggiunto. Riprova più tardi.' }, { status: 429 })
+    }
+
     const formData = await req.formData()
     const file = formData.get('file') as File
-    const tipo_contesto = formData.get('tipo_contesto') as string || 'profile'
+    const tipoContestoRaw = formData.get('tipo_contesto') as string
+    const tipo_contesto = ['profile', 'chat'].includes(tipoContestoRaw) ? tipoContestoRaw : 'profile'
     const ambito = formData.get('ambito') as string | null || null
 
     if (!file) {

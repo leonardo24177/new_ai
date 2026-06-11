@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
 import { MODELS } from '@/lib/model-pricing'
+import { logAction } from '@/lib/audit'
+import { superaLimiteOrario } from '@/lib/rate-limit'
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! })
 
@@ -32,7 +34,19 @@ export async function POST(req: NextRequest) {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Non autenticato' }, { status: 401 })
 
+    // Rate limiting: ogni chiamata fa più generazioni Sonnet — max 10/ora
+    if (await superaLimiteOrario(user.id, 'onboarding_generate', 10)) {
+      return NextResponse.json({ error: 'Limite orario di generazioni raggiunto. Riprova più tardi.' }, { status: 429 })
+    }
+    logAction(user.id, user.email || '', 'onboarding_generate', { route: 'generate-multi' }).catch(() => {})
+
     const { nome: nomeRaw, ambitiData, note_libere: noteRaw } = await req.json()
+
+    // Max 3 ambiti (lavoro/studio/personale): il loop fa una chiamata Sonnet per elemento
+    if (!Array.isArray(ambitiData) || ambitiData.length === 0 || ambitiData.length > 3) {
+      return NextResponse.json({ error: 'Dati ambiti non validi' }, { status: 400 })
+    }
+
     const nome = san(nomeRaw, 100)
     const note_libere = san(noteRaw, 500)
 

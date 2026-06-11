@@ -1,11 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { createHash } from 'crypto'
+import { hashSharePassword } from '@/lib/share-password'
 import { logAction } from '@/lib/audit'
-
-function hashPassword(pw: string): string {
-  return createHash('sha256').update(pw).digest('hex')
-}
 
 function calcExpiresAt(expiresIn: string | null | undefined): string | null {
   if (!expiresIn || expiresIn === 'mai') return null
@@ -75,7 +71,7 @@ export async function POST(
 
     const body = await req.json()
     const expires_at = calcExpiresAt(body.expires_in)
-    const password_hash = body.password ? hashPassword(body.password) : null
+    const password_hash = body.password ? hashSharePassword(body.password) : null
     const token = crypto.randomUUID()
 
     // Rimuove share esistente (se c'è) e ne crea uno nuovo

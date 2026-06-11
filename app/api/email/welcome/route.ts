@@ -1,7 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createClient as createServiceClient } from '@supabase/supabase-js'
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
 
 export async function POST(req: NextRequest) {
-  const { email, nome } = await req.json()
+  const { email } = await req.json()
 
   if (!email || typeof email !== 'string') {
     return NextResponse.json({ error: 'Email mancante' }, { status: 400 })
@@ -14,7 +24,25 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true })
   }
 
-  const nomeDisplay = (typeof nome === 'string' && nome.trim()) ? nome.trim() : 'Benvenuto'
+  // La signUp non crea sessione (serve conferma email), quindi la route non può
+  // richiedere auth: verifica invece che l'email appartenga a un utente registrato
+  // negli ultimi 15 minuti, e prende il nome dai suoi metadata (non dal body).
+  const service = createServiceClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  )
+  const { data: authData } = await service.auth.admin.listUsers({ page: 1, perPage: 1000 })
+  const utente = authData?.users.find(u => u.email?.toLowerCase() === email.toLowerCase())
+  const FINESTRA_MS = 15 * 60 * 1000
+  if (!utente || Date.now() - new Date(utente.created_at).getTime() > FINESTRA_MS) {
+    // Risposta identica al successo per non rivelare quali email sono registrate
+    return NextResponse.json({ ok: true })
+  }
+
+  const nome = utente.user_metadata?.nome
+  const nomeDisplay = escapeHtml(
+    (typeof nome === 'string' && nome.trim()) ? nome.trim() : 'Benvenuto'
+  )
 
   const html = `<!DOCTYPE html>
 <html lang="it">

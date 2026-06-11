@@ -59,7 +59,7 @@ export default function RegisterPage() {
     fetch('/api/email/welcome', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, nome }),
+      body: JSON.stringify({ email }),
     }).catch(() => {})
 
     router.push('/onboarding')
