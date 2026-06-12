@@ -5,6 +5,9 @@ import { MODELS } from '@/lib/model-pricing'
 import { logAction } from '@/lib/audit'
 import { superaLimiteOrario } from '@/lib/rate-limit'
 
+// L'OCR via Claude sui PDF scansionati può richiedere 30-50s: serve più del default Vercel
+export const maxDuration = 60
+
 export async function POST(req: NextRequest) {
   try {
     const supabase = await createClient()
@@ -112,25 +115,31 @@ export async function POST(req: NextRequest) {
 
     try {
       if (file.type === 'application/pdf') {
-        // Prova prima l'estrazione testuale standard
+        // Prova prima l'estrazione testuale standard (pdf-parse v2: classe PDFParse, non funzione)
+        let numPagine = 1
         try {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const pdfParse = await import('pdf-parse').then((m: any) => m.default || m)
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const parsed = await (pdfParse as any)(buffer)
+          const { PDFParse } = await import('pdf-parse')
+          const parser = new PDFParse({ data: new Uint8Array(buffer) })
+          const parsed = await parser.getText()
+          await parser.destroy()
+          numPagine = parsed.pages?.length || 1
           testo_estratto = parsed.text?.trim().slice(0, 50000) || ''
-        } catch {
+        } catch (parseError) {
+          console.error('Errore pdf-parse:', parseError)
           testo_estratto = ''
         }
 
-        // Se il testo è quasi vuoto, è probabilmente un PDF scansionato — usa Claude OCR
-        // Limite 10MB per non sovraccaricare l'API con file enormi
-        if (testo_estratto.length < 100 && file.size <= 10 * 1024 * 1024) {
+        // PDF scansionato → Claude OCR. Soglia per pagina: i documenti scansionati con
+        // intestazione digitale producono ~20 char/pagina, una pagina di testo vero 1000+.
+        // Limite 10MB per non sovraccaricare l'API con file enormi.
+        const sogliaOcr = Math.max(100, 80 * numPagine)
+        if (testo_estratto.length < sogliaOcr && file.size <= 10 * 1024 * 1024) {
           try {
             const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-            const ocrPromise = anthropic.messages.create({
+            // Streaming: se il timeout scatta a metà, si conserva il testo già estratto
+            const stream = anthropic.messages.stream({
               model: MODELS.haiku,
-              max_tokens: 4096,
+              max_tokens: 8192,
               messages: [{
                 role: 'user',
                 content: [
@@ -150,11 +159,21 @@ export async function POST(req: NextRequest) {
                 ],
               }],
             })
-            // Timeout 20s per non superare il limite Vercel di 30s
-            const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 20000))
-            const risposta = await Promise.race([ocrPromise, timeout])
-            if (risposta && risposta.content[0].type === 'text') {
-              testo_estratto = risposta.content[0].text.slice(0, 50000)
+            // Timeout 50s per restare sotto maxDuration 60s
+            let testoOcr = ''
+            const timer = setTimeout(() => stream.abort(), 50000)
+            try {
+              for await (const event of stream) {
+                if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+                  testoOcr += event.delta.text
+                }
+              }
+            } catch {
+              // Abort per timeout: si tiene il parziale accumulato
+            }
+            clearTimeout(timer)
+            if (testoOcr.trim().length > testo_estratto.length) {
+              testo_estratto = testoOcr.trim().slice(0, 50000)
             }
           } catch (ocrError) {
             console.error('Errore OCR Claude:', ocrError)

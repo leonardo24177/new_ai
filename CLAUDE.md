@@ -165,7 +165,7 @@ SENTRY_AUTH_TOKEN               ← token per upload source maps in build
 - **Limite costo mensile**: per utente, letto da `user_limits.limite_mensile` con fallback $5/mese (costante `COSTO_MENSILE_MAX` in `/api/chat/route.ts`). Calcolato in parallelo al rate limiting sommando `costo_stimato` dei messaggi dal primo del mese. Restituisce 429 con messaggio che invita a contattare il supporto. Il limite per utente si modifica dal tab Utenti dell'admin (bottone "Limite" → `PATCH /api/admin/users` con `limite_mensile`, upsert su `user_limits` via service role, audit action `limit_changed`). La tabella non ha policy di scrittura — l'utente non può modificarsi il limite (vedi `supabase/rls/user_limits_migration.sql`). Il default è `COSTO_MENSILE_DEFAULT` in `lib/model-pricing.ts`.
 - **Cookie banner**: `CookieBanner.tsx` incluso in `layout.tsx`. Usa `localStorage.cookie_consent` per ricordare l'accettazione. Solo cookie tecnici — nessuna CMP complessa necessaria.
 - **File upload — formati supportati**: PDF (con fallback OCR via Claude Haiku se testo < 100 char), DOCX, XLSX, XLS, PPTX (parsing XML via jszip), immagini (JPEG/PNG/GIF/WebP), testo, codice. Formati `.doc`, `.ppt` restituiscono errore esplicito che chiede di convertire.
-- **File upload — OCR**: se `pdf-parse` restituisce < 100 caratteri, il PDF viene inviato a Claude Haiku come documento nativo. Timeout fisso di 20s (`Promise.race`) per rispettare il limite Vercel di 30s.
+- **File upload — OCR**: `pdf-parse` è alla v2 (classe `PDFParse` + `getText()`, non più funzione — non regredire alla vecchia API). Se il testo estratto è sotto la soglia `max(100, 80 × pagine)` (i PDF scansionati con intestazione digitale producono ~20 char/pagina), il PDF viene inviato a Claude Haiku come documento nativo in **streaming**: al timeout di 50s si conserva il testo parziale accumulato. La route ha `export const maxDuration = 60`.
 - **File**: il testo estratto viene troncato a 50.000 caratteri al momento dell'upload; in chat il contesto per file è troncato a 30.000.
 - **Immagini in chat**: passate a Claude come `image` blocks (non come testo). Download in parallelo con `Promise.all`. Limite: max 5 immagini totali (profilo + chat), max 4MB per immagine. Formati: JPEG, PNG, GIF, WebP. Immagini > 4MB vengono silenziosamente scartate.
 - **Clipboard paste immagini**: `onPaste` sulla textarea — se il clipboard contiene un'immagine, la carica direttamente come allegato chat senza dialog.
@@ -195,7 +195,7 @@ SENTRY_AUTH_TOKEN               ← token per upload source maps in build
 - Non salvare `approvato` in `user_metadata` — è modificabile dal client. Usare sempre `app_metadata` via service role.
 - Non fare download immagini sequenziali in chat — usare sempre `Promise.all` per scaricarle in parallelo.
 - Non aumentare il limite immagini oltre 4MB senza verificare i limiti dell'API Anthropic.
-- Non rimuovere il timeout OCR (20s) — senza, i PDF grandi causano timeout Vercel 504.
+- Non rimuovere il timeout OCR (50s, con `maxDuration = 60` sulla route upload) — senza, i PDF grandi causano timeout Vercel 504.
 - Non usare `.in()` con array non limitati nella delete account — usare batch da 100.
 - Non passare `google_access_token` dal client al server — il token Drive viene sempre letto da `user_configs` server-side.
 - Non hardcodare model ID — usare sempre `MODELS.haiku/sonnet/opus` da `lib/model-pricing.ts`.
