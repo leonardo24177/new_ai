@@ -290,7 +290,8 @@ export default function ChatPage() {
         .eq('user_id', user.id)
         .order('label'),
     ])
-    const publicSkills = [...(publicSkillsData || []), ...(personalSkillsData || [])]
+    // Le skill personali compaiono per prime nel selettore
+    const publicSkills = [...(personalSkillsData || []), ...(publicSkillsData || [])]
 
     if (ambiti && ambiti.length > 0) {
       const ambitiList = ambiti.map(a => a.ambito)
@@ -335,7 +336,7 @@ export default function ChatPage() {
     setNewSkillSaving(false)
     if (error || !data) { setNewSkillError('Errore durante il salvataggio'); return }
 
-    setSkills(prev => [...prev, data])
+    setSkills(prev => [data, ...prev])
     setActiveSkills(prev => [...prev, data.slug])
     setNewSkillOpen(false)
     setNewSkillLabel('')
