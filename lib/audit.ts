@@ -9,6 +9,8 @@ export type AuditAction =
   | 'user_approved'
   | 'limit_changed'
   | 'onboarding_generate'
+  | 'admin_file_deleted'
+  | 'admin_skill_deleted'
 
 export async function logAction(
   userId: string,

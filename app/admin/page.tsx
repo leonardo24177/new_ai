@@ -42,6 +42,27 @@ const PROFESSIONI = [
   { value: 'editore', label: '📖 Editore / Editor' },
 ]
 
+interface AdminFile {
+  id: string
+  user_id: string
+  nome: string
+  mime_type: string
+  dimensione: number
+  tipo_contesto: string
+  ambito: string | null
+  tipo: string | null
+  url: string | null
+  created_at: string
+}
+
+interface PersonalSkillAdmin {
+  id: string
+  user_id: string
+  slug: string
+  label: string
+  extra_sys: string
+}
+
 interface AuditLog {
   id: string
   user_id: string
@@ -78,8 +99,16 @@ function actionColor(action: string): string {
     case 'account_delete': return 'bg-red-100 text-red-700'
     case 'user_approved': return 'bg-teal-100 text-teal-700'
     case 'limit_changed': return 'bg-amber-100 text-amber-700'
+    case 'admin_file_deleted':  return 'bg-red-100 text-red-700'
+    case 'admin_skill_deleted': return 'bg-red-100 text-red-700'
     default:              return 'bg-gray-100 text-gray-600'
   }
+}
+
+function formatFileSize(bytes: number): string {
+  if (!bytes) return '—'
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(0) + ' KB'
+  return (bytes / 1024 / 1024).toFixed(1) + ' MB'
 }
 
 function metadataSummary(action: string, meta: Record<string, unknown>): string {
@@ -98,6 +127,10 @@ function metadataSummary(action: string, meta: Record<string, unknown>): string 
       return `target=${String(meta.target_user_id).slice(0, 8)}… approvato=${meta.approvato}`
     case 'limit_changed':
       return `target=${String(meta.target_user_id).slice(0, 8)}… limite=$${meta.limite_mensile}/mese`
+    case 'admin_file_deleted':
+      return `${meta.nome} target=${String(meta.target_user_id).slice(0, 8)}…`
+    case 'admin_skill_deleted':
+      return `${meta.label} target=${String(meta.target_user_id).slice(0, 8)}…`
     default:
       return JSON.stringify(meta).slice(0, 80)
   }
@@ -106,7 +139,12 @@ function metadataSummary(action: string, meta: Record<string, unknown>): string 
 export default function AdminPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState<'utenti' | 'skill' | 'stats' | 'audit'>('utenti')
+  const [activeTab, setActiveTab] = useState<'utenti' | 'skill' | 'file' | 'stats' | 'audit'>('utenti')
+  const [adminFiles, setAdminFiles] = useState<AdminFile[]>([])
+  const [filesLoading, setFilesLoading] = useState(false)
+  const [fileUserFilter, setFileUserFilter] = useState('')
+  const [personalSkills, setPersonalSkills] = useState<PersonalSkillAdmin[]>([])
+  const [expandedPersonalSkill, setExpandedPersonalSkill] = useState<string | null>(null)
   const [users, setUsers] = useState<User[]>([])
   const [skills, setSkills] = useState<Skill[]>([])
   const [stats, setStats] = useState<Stats | null>(null)
@@ -158,6 +196,51 @@ export default function AdminPage() {
     // Solo skill globali: quelle personali (user_id valorizzato) si gestiscono dal profilo
     const { data } = await supabase.from('skills').select('*').is('user_id', null).order('categoria')
     setSkills(data || [])
+  }
+
+  async function loadAdminFiles() {
+    setFilesLoading(true)
+    try {
+      const res = await fetch('/api/admin/files')
+      const data = await res.json()
+      setAdminFiles(data.files || [])
+    } finally {
+      setFilesLoading(false)
+    }
+  }
+
+  async function deleteAdminFile(file: AdminFile) {
+    if (!confirm(`Eliminare "${file.nome}" di ${getUserEmail(file.user_id)}?`)) return
+    const res = await fetch('/api/admin/files', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ file_id: file.id }),
+    })
+    if (res.ok) {
+      setAdminFiles(prev => prev.filter(f => f.id !== file.id))
+      setSuccessMsg('File eliminato')
+      setTimeout(() => setSuccessMsg(''), 2000)
+    }
+  }
+
+  async function loadPersonalSkills() {
+    const res = await fetch('/api/admin/personal-skills')
+    const data = await res.json()
+    setPersonalSkills(data.skills || [])
+  }
+
+  async function deletePersonalSkill(skill: PersonalSkillAdmin) {
+    if (!confirm(`Eliminare la skill "${skill.label}" di ${getUserEmail(skill.user_id)}?`)) return
+    const res = await fetch('/api/admin/personal-skills', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ skill_id: skill.id }),
+    })
+    if (res.ok) {
+      setPersonalSkills(prev => prev.filter(s => s.id !== skill.id))
+      setSuccessMsg('Skill eliminata')
+      setTimeout(() => setSuccessMsg(''), 2000)
+    }
   }
 
   async function loadStats() {
@@ -358,13 +441,16 @@ export default function AdminPage() {
           {[
             { key: 'utenti', label: `Utenti (${users.length})` },
             { key: 'skill', label: `Skill (${skills.length})` },
+            { key: 'file', label: '📁 File' },
             { key: 'stats', label: '📊 Stats' },
             { key: 'audit', label: '🔍 Audit' },
           ].map(tab => (
             <button
               key={tab.key}
               onClick={() => {
-                setActiveTab(tab.key as 'utenti' | 'skill' | 'stats' | 'audit')
+                setActiveTab(tab.key as 'utenti' | 'skill' | 'file' | 'stats' | 'audit')
+                if (tab.key === 'skill') loadPersonalSkills()
+                if (tab.key === 'file') loadAdminFiles()
                 if (tab.key === 'stats') loadStats()
                 if (tab.key === 'audit') loadAuditLogs(true)
               }}
@@ -693,6 +779,110 @@ export default function AdminPage() {
                   })
               })()}
             </div>
+
+            {/* Skill personali degli utenti */}
+            <div className="mt-6">
+              <div className="mb-3">
+                <h3 className="text-sm font-semibold text-gray-900">✦ Skill personali degli utenti ({personalSkills.length})</h3>
+                <p className="text-xs text-gray-400 mt-0.5">Create dagli utenti dal profilo o dalla chat — visibili solo a chi le ha create</p>
+              </div>
+              {personalSkills.length === 0 ? (
+                <div className="bg-white rounded-2xl border border-gray-200 p-6 text-center">
+                  <p className="text-gray-400 text-sm">Nessuna skill personale</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {personalSkills.map(skill => (
+                    <div key={skill.id} className="bg-white rounded-2xl border border-gray-200 p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1 flex-wrap">
+                            <p className="text-sm font-semibold text-gray-900">✦ {skill.label}</p>
+                            <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">{getUserEmail(skill.user_id)}</span>
+                          </div>
+                          <p className={`text-xs text-gray-500 ${expandedPersonalSkill === skill.id ? 'whitespace-pre-wrap' : 'line-clamp-2'}`}>{skill.extra_sys}</p>
+                        </div>
+                        <div className="flex flex-col gap-1.5 flex-shrink-0">
+                          <button
+                            onClick={() => setExpandedPersonalSkill(p => p === skill.id ? null : skill.id)}
+                            className="text-xs px-3 py-2 border border-gray-200 rounded-lg text-gray-600 active:border-gray-400 transition-colors"
+                          >
+                            {expandedPersonalSkill === skill.id ? 'Chiudi' : 'Vedi'}
+                          </button>
+                          <button
+                            onClick={() => deletePersonalSkill(skill)}
+                            className="text-xs px-3 py-2 border border-red-200 rounded-lg text-red-500 active:bg-red-50 transition-colors"
+                          >
+                            Elimina
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* TAB FILE UTENTI */}
+        {activeTab === 'file' && (
+          <div>
+            <div className="flex items-center justify-between mb-4 gap-3">
+              <div>
+                <h2 className="text-sm font-semibold text-gray-900">File degli utenti ({adminFiles.length})</h2>
+                <p className="text-xs text-gray-400 mt-0.5">Documenti e link caricati nel profilo o in chat</p>
+              </div>
+              <button onClick={loadAdminFiles} disabled={filesLoading}
+                className="text-xs text-gray-400 border border-gray-200 px-3 py-2 rounded-xl active:bg-gray-50 disabled:opacity-40 flex-shrink-0">
+                {filesLoading ? '...' : '↻ Aggiorna'}
+              </button>
+            </div>
+
+            <select value={fileUserFilter} onChange={e => setFileUserFilter(e.target.value)}
+              className="w-full mb-4 px-3 py-2.5 border border-gray-200 rounded-xl text-sm bg-white text-gray-700 focus:outline-none focus:border-gray-400">
+              <option value="">Tutti gli utenti</option>
+              {users.map(u => <option key={u.id} value={u.id}>{u.email}</option>)}
+            </select>
+
+            {filesLoading ? (
+              <div className="bg-white rounded-2xl border border-gray-200 p-8 text-center">
+                <p className="text-gray-400 text-sm">Caricamento...</p>
+              </div>
+            ) : (() => {
+              const filtrati = fileUserFilter ? adminFiles.filter(f => f.user_id === fileUserFilter) : adminFiles
+              return filtrati.length === 0 ? (
+                <div className="bg-white rounded-2xl border border-gray-200 p-8 text-center">
+                  <p className="text-gray-400 text-sm">Nessun file</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {filtrati.map(file => (
+                    <div key={file.id} className="bg-white rounded-2xl border border-gray-200 p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-900 truncate">
+                            {file.tipo === 'link' ? '🔗' : '📄'} {file.nome}
+                          </p>
+                          <div className="flex items-center gap-2 mt-1 flex-wrap">
+                            <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">{getUserEmail(file.user_id)}</span>
+                            {file.tipo !== 'link' && <span className="text-xs text-gray-400">{formatFileSize(file.dimensione)}</span>}
+                            <span className="text-xs text-gray-400">{file.tipo_contesto}{file.ambito ? ` · ${file.ambito}` : ''}</span>
+                            <span className="text-xs text-gray-400">{new Date(file.created_at).toLocaleDateString('it-IT')}</span>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => deleteAdminFile(file)}
+                          className="flex-shrink-0 text-xs px-3 py-2 border border-red-200 rounded-lg text-red-500 active:bg-red-50 transition-colors"
+                        >
+                          Elimina
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )
+            })()}
           </div>
         )}
 
