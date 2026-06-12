@@ -24,7 +24,7 @@ claude-sonnet-4-6           ← richieste strutturate (score 25–69)
 claude-opus-4-8             ← analisi complesse, file multipli (score ≥ 70)
 ```
 
-La logica di selezione è in `lib/model-selector.ts`. Il pricing in `lib/model-pricing.ts`.
+La logica di selezione è in `lib/model-selector.ts` (un allegato chat garantisce minimo Sonnet; i documenti profilo/Drive iniettati nel contesto contano via `extraContextLength`). Il pricing in `lib/model-pricing.ts`.
 I model ID sono esportati come costanti `MODELS.haiku/sonnet/opus` da `lib/model-pricing.ts` — usare sempre quelle, mai stringhe hardcoded.
 
 ## Struttura cartelle
@@ -168,7 +168,7 @@ SENTRY_AUTH_TOKEN               ← token per upload source maps in build
 - **Cookie banner**: `CookieBanner.tsx` incluso in `layout.tsx`. Usa `localStorage.cookie_consent` per ricordare l'accettazione. Solo cookie tecnici — nessuna CMP complessa necessaria.
 - **File upload — formati supportati**: PDF (con fallback OCR via Claude Haiku se testo < 100 char), DOCX, XLSX, XLS, PPTX (parsing XML via jszip), immagini (JPEG/PNG/GIF/WebP), testo, codice. Formati `.doc`, `.ppt` restituiscono errore esplicito che chiede di convertire.
 - **File upload — OCR**: `pdf-parse` è alla v2 (classe `PDFParse` + `getText()`, non più funzione — non regredire alla vecchia API). Se il testo estratto è sotto la soglia `max(100, 80 × pagine)` (i PDF scansionati con intestazione digitale producono ~20 char/pagina), il PDF viene inviato a Claude Haiku come documento nativo in **streaming**: al timeout di 50s si conserva il testo parziale accumulato. La route ha `export const maxDuration = 60`.
-- **File**: il testo estratto viene troncato a 50.000 caratteri al momento dell'upload; in chat il contesto per file è troncato a 30.000.
+- **File**: il testo estratto viene troncato a 150.000 caratteri all'upload (`MAX_TESTO_ESTRATTO`); in chat i file di profilo sono troncati a 60.000 (`MAX_CHAR_FILE_PROFILO`) con avviso esplicito `[…DOCUMENTO TRONCATO…]` nel contesto, gli allegati chat passano interi. I PDF multi-pagina hanno marcatori `[Pagina N]` (sia da pdf-parse che da OCR) per citazioni precise. Quando ci sono documenti nel contesto, il chat route inietta la `REGOLA_DOCUMENTI` (citazioni testuali con pagina, niente deduzioni, avviso se troncato) dopo la `REGOLA_FONTI`.
 - **Immagini in chat**: passate a Claude come `image` blocks (non come testo). Download in parallelo con `Promise.all`. Limite: max 5 immagini totali (profilo + chat), max 4MB per immagine. Formati: JPEG, PNG, GIF, WebP. Immagini > 4MB vengono silenziosamente scartate.
 - **Clipboard paste immagini**: `onPaste` sulla textarea — se il clipboard contiene un'immagine, la carica direttamente come allegato chat senza dialog.
 - **Drag & drop file**: handler `onDragOver/onDrop` sul container principale della chat. Max 3 file per drop. Overlay visivo durante il drag. Toast errore include il nome del file specifico che ha fallito.

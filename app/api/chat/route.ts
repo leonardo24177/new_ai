@@ -25,6 +25,19 @@ REGOLE VINCOLANTI:
 - Preferisci sempre la trasparenza sull'incertezza alla completezza apparente
 `.trim()
 
+// Iniettata solo quando ci sono documenti nel contesto
+const REGOLA_DOCUMENTI = `
+ANALISI DEI DOCUMENTI CARICATI:
+- Basa le risposte sul testo fornito: cita testualmente i passaggi rilevanti e, se il testo contiene marcatori [Pagina N], indica sempre il numero di pagina dei passaggi citati.
+- Distingui chiaramente ciò che il documento dice da tue interpretazioni o conoscenze generali.
+- Se un documento è segnalato come troncato, avvisa l'utente che l'analisi copre solo la parte disponibile.
+- Se l'informazione richiesta non è presente nel testo fornito, dillo esplicitamente invece di dedurla o inventarla.
+- Per dati critici (importi, date, nomi, clausole) riporta sempre la formulazione esatta del documento.
+`.trim()
+
+// Limite per file di profilo iniettato in chat (gli allegati chat espliciti passano interi)
+const MAX_CHAR_FILE_PROFILO = 60000
+
 interface DriveFolder {
   folder_id: string
   nome: string
@@ -311,7 +324,11 @@ export async function POST(req: NextRequest) {
         const ambitoTag = f.ambito ? ` [${f.ambito}]` : ''
         if (f.testo_contenuto && f.testo_contenuto.trim().length > 0) {
           const tipoLabel = f.tipo === 'link' ? 'Link' : 'File'
-          fileTexts.push(`[${tipoLabel} verificato${ambitoTag}: ${f.nome}]\n${f.testo_contenuto.slice(0, 30000)}`)
+          // Avviso esplicito di troncamento: il modello deve sapere che il testo non è completo
+          const troncato = f.testo_contenuto.length > MAX_CHAR_FILE_PROFILO
+            ? `\n[…DOCUMENTO TRONCATO: mostrati i primi ${MAX_CHAR_FILE_PROFILO} caratteri su ${f.testo_contenuto.length}]`
+            : ''
+          fileTexts.push(`[${tipoLabel} verificato${ambitoTag}: ${f.nome}]\n${f.testo_contenuto.slice(0, MAX_CHAR_FILE_PROFILO)}${troncato}`)
         } else if (f.tipo === 'link' && f.url) {
           fileTexts.push(`[Link di riferimento${ambitoTag}: ${f.nome} — ${f.url}] (contenuto non scaricato)`)
         } else if (f.storage_path) {
@@ -363,6 +380,9 @@ export async function POST(req: NextRequest) {
     }
     // ─── fine Drive ───────────────────────────────────────────
 
+    // Lunghezza del contesto profilo+Drive (gli allegati chat sono già in file_contexts)
+    const lunghezzaContestoProfilo = fileTexts.reduce((sum, t) => sum + t.length, 0)
+
     if (file_contexts && file_contexts.length > 0) {
       const chatImages = file_contexts.filter((fc: { mime_type?: string; storage_path?: string }) => fc.mime_type?.startsWith('image/') && fc.storage_path)
       const chatTextFiles = file_contexts.filter((fc: { mime_type?: string; storage_path?: string }) => !fc.mime_type?.startsWith('image/'))
@@ -384,6 +404,11 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Regole di analisi documentale: solo quando c'è almeno un documento nel contesto
+    if (fileTexts.length > 0) {
+      systemPrompt = `${systemPrompt}\n\n---\n${REGOLA_DOCUMENTI}`
+    }
+
     if ((fileTexts.length > 0 || imageBlocks.length > 0) && messagesWithContext.length > 0) {
       const lastIdx = messagesWithContext.length - 1
       const last = messagesWithContext[lastIdx]
@@ -400,7 +425,8 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 8. Selezione dinamica modello
+    // 8. Selezione dinamica modello — considera anche i documenti di profilo/Drive
+    // iniettati nel contesto, non solo gli allegati chat
     const lastUserMessage = messages[messages.length - 1]?.content || ''
     const { model, reason } = selectModel({
       userMessage: lastUserMessage,
@@ -408,6 +434,7 @@ export async function POST(req: NextRequest) {
       fileContexts: file_contexts || [],
       activeSkillSlugs: active_skill_slugs || [],
       professione,
+      extraContextLength: lunghezzaContestoProfilo,
     })
 
     // 9. Salva messaggio utente

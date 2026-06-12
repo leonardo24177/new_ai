@@ -8,6 +8,9 @@ import { superaLimiteOrario } from '@/lib/rate-limit'
 // L'OCR via Claude sui PDF scansionati può richiedere 30-50s: serve più del default Vercel
 export const maxDuration = 60
 
+// Tetto testo estratto per file (in chat i file di profilo sono ulteriormente limitati)
+const MAX_TESTO_ESTRATTO = 150000
+
 export async function POST(req: NextRequest) {
   try {
     const supabase = await createClient()
@@ -123,7 +126,16 @@ export async function POST(req: NextRequest) {
           const parsed = await parser.getText()
           await parser.destroy()
           numPagine = parsed.pages?.length || 1
-          testo_estratto = parsed.text?.trim().slice(0, 50000) || ''
+          // Marcatori [Pagina N] per permettere citazioni precise in chat
+          if (parsed.pages && parsed.pages.length > 1) {
+            testo_estratto = parsed.pages
+              .map((p: { num: number; text: string }) => `[Pagina ${p.num}]\n${(p.text || '').trim()}`)
+              .join('\n\n')
+              .trim()
+              .slice(0, MAX_TESTO_ESTRATTO)
+          } else {
+            testo_estratto = parsed.text?.trim().slice(0, MAX_TESTO_ESTRATTO) || ''
+          }
         } catch (parseError) {
           console.error('Errore pdf-parse:', parseError)
           testo_estratto = ''
@@ -154,7 +166,7 @@ export async function POST(req: NextRequest) {
                   } as any,
                   {
                     type: 'text',
-                    text: 'Estrai tutto il testo leggibile da questo documento PDF. Restituisci solo il testo estratto, senza commenti o introduzioni.',
+                    text: 'Estrai tutto il testo leggibile da questo documento PDF. Segna l\'inizio di ogni pagina con [Pagina N] su una riga a sé. Restituisci solo il testo estratto, senza commenti o introduzioni.',
                   },
                 ],
               }],
@@ -173,7 +185,7 @@ export async function POST(req: NextRequest) {
             }
             clearTimeout(timer)
             if (testoOcr.trim().length > testo_estratto.length) {
-              testo_estratto = testoOcr.trim().slice(0, 50000)
+              testo_estratto = testoOcr.trim().slice(0, MAX_TESTO_ESTRATTO)
             }
           } catch (ocrError) {
             console.error('Errore OCR Claude:', ocrError)
@@ -186,7 +198,7 @@ export async function POST(req: NextRequest) {
       ) {
         const mammoth = await import('mammoth')
         const result = await mammoth.extractRawText({ buffer })
-        testo_estratto = result.value?.slice(0, 50000) || ''
+        testo_estratto = result.value?.slice(0, MAX_TESTO_ESTRATTO) || ''
       }
       else if (
         file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
@@ -198,7 +210,7 @@ export async function POST(req: NextRequest) {
           const sheet = workbook.Sheets[name]
           return `[Foglio: ${name}]\n${XLSX.utils.sheet_to_csv(sheet)}`
         })
-        testo_estratto = sheets.join('\n\n').slice(0, 50000)
+        testo_estratto = sheets.join('\n\n').slice(0, MAX_TESTO_ESTRATTO)
       }
       else if (file.type === 'application/vnd.openxmlformats-officedocument.presentationml.presentation') {
         const JSZip = (await import('jszip')).default
@@ -220,7 +232,7 @@ export async function POST(req: NextRequest) {
             .join(' ')
           if (testoSlide) testi.push(testoSlide)
         }
-        testo_estratto = testi.join('\n').slice(0, 50000)
+        testo_estratto = testi.join('\n').slice(0, MAX_TESTO_ESTRATTO)
       }
       else if (file.type.startsWith('image/')) {
         testo_estratto = `[Immagine: ${file.name}]`
@@ -232,14 +244,14 @@ export async function POST(req: NextRequest) {
         isCodice
       ) {
         // File di testo, codice, JSON, XML, Markdown, ecc.
-        testo_estratto = buffer.toString('utf-8').slice(0, 50000)
+        testo_estratto = buffer.toString('utf-8').slice(0, MAX_TESTO_ESTRATTO)
       }
     } catch (extractError) {
       console.error('Errore estrazione testo:', extractError)
       // Per i file di codice, prova comunque a leggere come testo
       if (isCodice) {
         try {
-          testo_estratto = buffer.toString('utf-8').slice(0, 50000)
+          testo_estratto = buffer.toString('utf-8').slice(0, MAX_TESTO_ESTRATTO)
         } catch {
           testo_estratto = ''
         }

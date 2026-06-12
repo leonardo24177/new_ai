@@ -8,6 +8,9 @@ interface ModelSelectorInput {
   fileContexts?: { nome: string; testo: string }[]
   activeSkillSlugs?: string[]
   professione?: string
+  // Lunghezza del contesto documentale iniettato lato server (file profilo + Drive),
+  // invisibile a fileContexts che contiene solo gli allegati chat
+  extraContextLength?: number
 }
 
 interface ModelSelection {
@@ -54,13 +57,21 @@ export function selectModel(input: ModelSelectorInput): ModelSelection {
     reasons.push('messaggio medio')
   }
 
-  // 2. File allegati
+  // 2. File allegati — con almeno un allegato si garantisce minimo Sonnet (soglia 25)
   if (fileCount >= 2) {
     score += 40
     reasons.push(`${fileCount} file allegati`)
   } else if (fileCount === 1) {
-    score += 20
+    score += 25
     reasons.push('file allegato')
+  }
+
+  // 2b. Documenti di profilo/Drive nel contesto: l'input è comunque grande,
+  // un modello più capace li analizza con più precisione
+  const extraContext = input.extraContextLength || 0
+  if (extraContext > 0) {
+    score += 20
+    reasons.push('documenti di profilo nel contesto')
   }
 
   // 3. Skill professionali attive
@@ -98,8 +109,8 @@ export function selectModel(input: ModelSelectorInput): ModelSelection {
     reasons.push(`professione: ${input.professione}`)
   }
 
-  // 8. Testo file molto lungo
-  const totalFileLength = input.fileContexts?.reduce((sum, f) => sum + (f.testo?.length || 0), 0) || 0
+  // 8. Testo file molto lungo (allegati chat + contesto profilo/Drive)
+  const totalFileLength = (input.fileContexts?.reduce((sum, f) => sum + (f.testo?.length || 0), 0) || 0) + extraContext
   if (totalFileLength > 20000) {
     score += 35
     reasons.push('documento molto lungo')
