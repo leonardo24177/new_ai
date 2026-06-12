@@ -114,10 +114,25 @@ CREATE POLICY "user_files: eliminazione propria" ON user_files
   FOR DELETE USING (auth.uid() = user_id);
 
 -- ─── skills ──────────────────────────────────────────────────
+-- user_id NULL = skill globale/admin; valorizzato = skill personale
+-- (richiede personal_skills_migration.sql)
 DROP POLICY IF EXISTS "skills: lettura pubblica" ON skills;
+DROP POLICY IF EXISTS "skills: lettura pubblica e proprie" ON skills;
+DROP POLICY IF EXISTS "skills: inserimento proprie"  ON skills;
+DROP POLICY IF EXISTS "skills: aggiornamento proprie" ON skills;
+DROP POLICY IF EXISTS "skills: eliminazione proprie" ON skills;
 
-CREATE POLICY "skills: lettura pubblica" ON skills
-  FOR SELECT USING (pubblica = true);
+CREATE POLICY "skills: lettura pubblica e proprie" ON skills
+  FOR SELECT USING ((pubblica = true AND user_id IS NULL) OR auth.uid() = user_id);
+
+CREATE POLICY "skills: inserimento proprie" ON skills
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "skills: aggiornamento proprie" ON skills
+  FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "skills: eliminazione proprie" ON skills
+  FOR DELETE USING (auth.uid() = user_id);
 
 -- ─── admins ──────────────────────────────────────────────────
 -- Nessuna policy per utenti normali: le route admin usano service_role che bypassa RLS

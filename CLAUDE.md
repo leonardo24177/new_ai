@@ -106,7 +106,10 @@ user_files        id, user_id, nome, mime_type, dimensione,
                   testo_contenuto, tipo ('file'|'link'), url, created_at
 
 skills            id, slug (unique), label, extra_sys, categoria,
-                  pubblica, professione
+                  pubblica, professione,
+                  user_id (nullable, FK auth.users ON DELETE CASCADE)
+                  ← user_id null = skill globale/admin; valorizzato = skill
+                    personale creata dall'utente (vedi personal_skills_migration.sql)
 
 admins            user_id  ← inserimento manuale per abilitare accesso admin
 
@@ -170,6 +173,7 @@ SENTRY_AUTH_TOKEN               ← token per upload source maps in build
 - **Lingua**: tutta la UI, i messaggi di errore e i commenti sono in italiano.
 - **Niente console.log** in produzione — usare solo `console.error` per errori reali.
 - **Skills per ambito**: in chat le skill visibili sono filtrate per `ambitoAttivo` — lavoro vede skill della propria professione + skill globali (`professione = null`); studio e personale vedono solo skill globali. Non mostrare tutte le skill indifferentemente dall'ambito.
+- **Skill personali**: l'utente le crea dal tab "✦ Skill" del profilo (max 10, label 40 char, istruzioni 4000 char — limiti client-side, la RLS garantisce solo l'ownership). Salvate in `skills` con `user_id` valorizzato, `pubblica = false`, `professione = null` (visibili in ogni ambito), slug random `personale-...` per rispettare il vincolo UNIQUE globale. La route `/api/chat` non distingue: risolve gli slug col JWT utente e la RLS (`(pubblica AND user_id IS NULL) OR auth.uid() = user_id`) impedisce di iniettare skill personali altrui. Il pannello admin filtra `user_id IS NULL`.
 - **Sentry**: inizializzato via `instrumentation.ts` (server) e `instrumentation.client.ts` (client) — questi file sono caricati automaticamente da Next.js. Non usare `tunnelRoute` in `withSentryConfig` (incompatibile con Turbopack). Il DSN è hardcoded nei file di istrumentazione perché le env var non sono disponibili in quel contesto con Turbopack.
 - **RLS Supabase**: le policy sono in `supabase/rls/policies.sql` — script idempotente con `DROP POLICY IF EXISTS` prima di ogni `CREATE POLICY`. Eseguire nel SQL Editor di Supabase dopo ogni modifica allo schema.
 - **Email transazionali**: Resend via SMTP configurato su Supabase Auth. Welcome email inviata da `/api/email/welcome` dopo la registrazione. Richiede `RESEND_API_KEY` e `RESEND_FROM_EMAIL`. La route non può richiedere auth (la signUp non crea sessione): verifica via service role che l'email appartenga a un utente registrato negli ultimi 15 minuti, prende il nome da `user_metadata` (mai dal body) e lo passa per `escapeHtml()`.

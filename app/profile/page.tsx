@@ -51,6 +51,18 @@ interface ShareLink {
   created_at: string
 }
 
+interface PersonalSkill {
+  id: string
+  slug: string
+  label: string
+  extra_sys: string
+}
+
+// Limiti skill personali (enforcement client-side; la RLS garantisce solo l'ownership)
+const MAX_SKILL_PERSONALI = 10
+const MAX_SKILL_LABEL = 40
+const MAX_SKILL_ISTRUZIONI = 4000
+
 // File/cartelle da ignorare nell'upload cartella
 const IGNORA = ['node_modules', '.git', '.next', 'dist', 'build', '.cache', '__pycache__', '.DS_Store', 'Thumbs.db']
 
@@ -132,7 +144,11 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [folderProgress, setFolderProgress] = useState<FolderProgress | null>(null)
-  const [activeTab, setActiveTab] = useState<'ambiti' | 'file' | 'drive' | 'prompt' | 'link'>('ambiti')
+  const [activeTab, setActiveTab] = useState<'ambiti' | 'file' | 'drive' | 'prompt' | 'link' | 'skill'>('ambiti')
+  const [personalSkills, setPersonalSkills] = useState<PersonalSkill[]>([])
+  const [skillForm, setSkillForm] = useState<{ id: string | null; label: string; extra_sys: string }>({ id: null, label: '', extra_sys: '' })
+  const [skillSaving, setSkillSaving] = useState(false)
+  const [skillError, setSkillError] = useState('')
   const [shares, setShares] = useState<ShareLink[]>([])
   const [sharesLoading, setSharesLoading] = useState(false)
   const [activeAmbito, setActiveAmbito] = useState<Ambito | null>(null)
@@ -184,7 +200,56 @@ export default function ProfilePage() {
       .eq('tipo_contesto', 'profile').order('created_at', { ascending: false })
     if (files) setProfileFiles(files)
 
+    const { data: mySkills } = await supabase
+      .from('skills').select('id, slug, label, extra_sys')
+      .eq('user_id', user.id).order('label')
+    if (mySkills) setPersonalSkills(mySkills)
+
     setLoading(false)
+  }
+
+  async function savePersonalSkill() {
+    const label = skillForm.label.trim().slice(0, MAX_SKILL_LABEL)
+    const extra_sys = skillForm.extra_sys.trim().slice(0, MAX_SKILL_ISTRUZIONI)
+    if (!label || !extra_sys) { setSkillError('Compila nome e istruzioni'); return }
+    if (!skillForm.id && personalSkills.length >= MAX_SKILL_PERSONALI) {
+      setSkillError(`Puoi creare al massimo ${MAX_SKILL_PERSONALI} skill personali`)
+      return
+    }
+    setSkillSaving(true)
+    setSkillError('')
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) { setSkillSaving(false); return }
+
+    if (skillForm.id) {
+      const { error } = await supabase.from('skills')
+        .update({ label, extra_sys })
+        .eq('id', skillForm.id).eq('user_id', user.id)
+      if (error) { setSkillError('Errore durante il salvataggio'); setSkillSaving(false); return }
+      setPersonalSkills(prev => prev.map(s => s.id === skillForm.id ? { ...s, label, extra_sys } : s))
+    } else {
+      // Slug random: la colonna ha vincolo UNIQUE globale, niente slug derivati dal nome
+      const slug = `personale-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+      const { data, error } = await supabase.from('skills')
+        .insert({ user_id: user.id, slug, label, extra_sys, categoria: 'personale', pubblica: false, professione: null })
+        .select('id, slug, label, extra_sys').single()
+      if (error || !data) { setSkillError('Errore durante il salvataggio'); setSkillSaving(false); return }
+      setPersonalSkills(prev => [...prev, data].sort((a, b) => a.label.localeCompare(b.label)))
+    }
+
+    setSkillForm({ id: null, label: '', extra_sys: '' })
+    setSkillSaving(false)
+    setSuccessMsg('Skill salvata!')
+    setTimeout(() => setSuccessMsg(''), 2000)
+  }
+
+  async function deletePersonalSkill(id: string) {
+    if (!confirm('Eliminare questa skill?')) return
+    const supabase = createClient()
+    await supabase.from('skills').delete().eq('id', id)
+    setPersonalSkills(prev => prev.filter(s => s.id !== id))
+    if (skillForm.id === id) setSkillForm({ id: null, label: '', extra_sys: '' })
   }
 
   async function loadShares() {
@@ -463,11 +528,12 @@ export default function ProfilePage() {
             { key: 'file', label: 'File' },
             { key: 'drive', label: '🗂 Drive' },
             { key: 'prompt', label: 'Prompt' },
+            { key: 'skill', label: '✦ Skill' },
             { key: 'link', label: '🔗 Link' },
           ].map(tab => (
             <button key={tab.key}
               onClick={() => {
-                setActiveTab(tab.key as 'ambiti' | 'file' | 'drive' | 'prompt' | 'link')
+                setActiveTab(tab.key as 'ambiti' | 'file' | 'drive' | 'prompt' | 'link' | 'skill')
                 if (tab.key === 'link') loadShares()
               }}
               className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
@@ -924,6 +990,91 @@ export default function ProfilePage() {
               className="mt-1 w-full bg-gray-900 text-white rounded-xl py-3.5 text-sm font-medium active:bg-gray-800 disabled:opacity-40 transition-colors">
               {saving ? 'Salvo...' : 'Salva prompt base'}
             </button>
+          </div>
+        )}
+
+        {/* TAB SKILL PERSONALI */}
+        {activeTab === 'skill' && (
+          <div>
+            <div className="mb-4">
+              <h2 className="text-sm font-semibold text-gray-900">Skill personali</h2>
+              <p className="text-xs text-gray-400 mt-0.5">
+                Modalità personalizzate che puoi attivare in chat dal pulsante ✦ Skill, in qualsiasi ambito
+              </p>
+            </div>
+
+            {/* Form crea/modifica */}
+            <div className="bg-white rounded-2xl border border-gray-200 p-4 mb-4">
+              <p className="text-xs font-medium text-gray-500 mb-2">
+                {skillForm.id ? 'Modifica skill' : 'Nuova skill'}
+              </p>
+              <input
+                type="text"
+                value={skillForm.label}
+                onChange={e => setSkillForm(f => ({ ...f, label: e.target.value }))}
+                maxLength={MAX_SKILL_LABEL}
+                placeholder="Nome (es. Revisione contratti)"
+                className="w-full text-sm text-gray-900 border border-gray-200 rounded-xl px-3 py-2.5 mb-2 focus:outline-none focus:border-gray-400"
+              />
+              <textarea
+                value={skillForm.extra_sys}
+                onChange={e => setSkillForm(f => ({ ...f, extra_sys: e.target.value }))}
+                maxLength={MAX_SKILL_ISTRUZIONI}
+                rows={5}
+                placeholder="Istruzioni per l'assistente quando questa skill è attiva (es. 'Rispondi sempre con un elenco puntato di rischi e clausole critiche...')"
+                className="w-full text-sm text-gray-900 border border-gray-200 rounded-xl px-3 py-2.5 resize-none focus:outline-none focus:border-gray-400"
+              />
+              <div className="flex items-center justify-between mt-1 mb-3">
+                <p className="text-xs text-gray-300">{skillForm.extra_sys.length}/{MAX_SKILL_ISTRUZIONI}</p>
+                {skillError && <p className="text-xs text-red-500">{skillError}</p>}
+              </div>
+              <div className="flex gap-2">
+                <button onClick={savePersonalSkill} disabled={skillSaving}
+                  className="flex-1 bg-gray-900 text-white rounded-xl py-3 text-sm font-medium active:bg-gray-800 disabled:opacity-40 transition-colors">
+                  {skillSaving ? 'Salvo...' : skillForm.id ? 'Salva modifiche' : 'Crea skill'}
+                </button>
+                {skillForm.id && (
+                  <button onClick={() => { setSkillForm({ id: null, label: '', extra_sys: '' }); setSkillError('') }}
+                    className="px-4 border border-gray-200 text-gray-600 rounded-xl py-3 text-sm active:bg-gray-50 transition-colors">
+                    Annulla
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Lista skill esistenti */}
+            {personalSkills.length === 0 ? (
+              <div className="bg-white rounded-2xl border border-gray-200 p-8 text-center">
+                <p className="text-gray-400 text-sm">Nessuna skill personale</p>
+                <p className="text-gray-300 text-xs mt-1">Creane una qui sopra: la troverai in chat tra le skill attivabili</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {personalSkills.map(skill => (
+                  <div key={skill.id} className="bg-white rounded-2xl border border-gray-200 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-gray-900 truncate">✦ {skill.label}</p>
+                        <p className="text-xs text-gray-400 mt-1 line-clamp-2">{skill.extra_sys}</p>
+                      </div>
+                      <div className="flex gap-2 flex-shrink-0">
+                        <button
+                          onClick={() => { setSkillForm({ id: skill.id, label: skill.label, extra_sys: skill.extra_sys }); setSkillError(''); window.scrollTo({ top: 0, behavior: 'smooth' }) }}
+                          className="text-xs text-gray-600 border border-gray-200 px-3 py-1.5 rounded-lg active:bg-gray-50 transition-colors">
+                          Modifica
+                        </button>
+                        <button
+                          onClick={() => deletePersonalSkill(skill.id)}
+                          className="text-xs text-red-500 border border-red-200 px-3 py-1.5 rounded-lg active:bg-red-50 transition-colors">
+                          Elimina
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <p className="text-xs text-gray-300 text-center mt-3">{personalSkills.length}/{MAX_SKILL_PERSONALI} skill</p>
           </div>
         )}
 

@@ -270,12 +270,22 @@ export default function ChatPage() {
       .from('skills')
       .select('id, slug, label, extra_sys, professione, categoria')
       .eq('pubblica', true)
+      .is('user_id', null)
 
     if (professioneUtente) {
       skillQuery = skillQuery.or(`professione.eq.${professioneUtente},professione.eq.generale,professione.is.null`)
     }
 
-    const { data: publicSkills } = await skillQuery
+    // Skill personali dell'utente (professione null → visibili in ogni ambito)
+    const [{ data: publicSkillsData }, { data: personalSkillsData }] = await Promise.all([
+      skillQuery,
+      supabase
+        .from('skills')
+        .select('id, slug, label, extra_sys, professione, categoria')
+        .eq('user_id', user.id)
+        .order('label'),
+    ])
+    const publicSkills = [...(publicSkillsData || []), ...(personalSkillsData || [])]
 
     if (ambiti && ambiti.length > 0) {
       const ambitiList = ambiti.map(a => a.ambito)

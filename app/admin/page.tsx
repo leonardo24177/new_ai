@@ -155,7 +155,8 @@ export default function AdminPage() {
 
   async function loadSkills() {
     const supabase = createClient()
-    const { data } = await supabase.from('skills').select('*').order('categoria')
+    // Solo skill globali: quelle personali (user_id valorizzato) si gestiscono dal profilo
+    const { data } = await supabase.from('skills').select('*').is('user_id', null).order('categoria')
     setSkills(data || [])
   }
 
