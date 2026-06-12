@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(Get-Content *)",
+      "PowerShell(Get-ChildItem *)",
+      "PowerShell(Get-Command *)",
+      "PowerShell(Test-Path *)",
+      "PowerShell(Start-Sleep *)",
+      "PowerShell(Measure-Object *)",
+      "PowerShell(Invoke-RestMethod *)",
+      "PowerShell(Invoke-WebRequest *)",
+      "PowerShell(npx tsc --noEmit)",
+      "Bash(npx tsc --noEmit)",
+      "Bash(npx tsc --noEmit 2>$null; echo \"exit: $LASTEXITCODE\")",
+      "PowerShell(npx tsc --noEmit 2>$null; echo \"exit: $LASTEXITCODE\")",
+      "PowerShell(npx next lint *)"
+    ]
+  }
+}

@@ -172,6 +172,11 @@ export default function ChatPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [skills, setSkills] = useState<{ id: string; slug: string; label: string; extra_sys: string; categoria: string | null; professione: string | null }[]>([])
   const [activeSkills, setActiveSkills] = useState<string[]>([])
+  const [newSkillOpen, setNewSkillOpen] = useState(false)
+  const [newSkillLabel, setNewSkillLabel] = useState('')
+  const [newSkillExtra, setNewSkillExtra] = useState('')
+  const [newSkillSaving, setNewSkillSaving] = useState(false)
+  const [newSkillError, setNewSkillError] = useState('')
   const [professione, setProfessione] = useState<string>('')
   const [showSkills, setShowSkills] = useState(false)
   const [loadingHistory, setLoadingHistory] = useState(false)
@@ -305,6 +310,36 @@ export default function ChatPage() {
       const skillsCaricate = publicSkills || []
       setIntroMessage(buildIntroMessage(nome, prof, skillsCaricate))
     }
+  }
+
+  // Stessi limiti del tab Skill nel profilo (enforcement client-side, la RLS garantisce l'ownership)
+  async function createPersonalSkill() {
+    const label = newSkillLabel.trim().slice(0, 40)
+    const extra_sys = newSkillExtra.trim().slice(0, 4000)
+    if (!label || !extra_sys) { setNewSkillError('Compila nome e istruzioni'); return }
+    if (skills.filter(s => s.slug.startsWith('personale-')).length >= 10) {
+      setNewSkillError('Massimo 10 skill personali — gestiscile dal profilo')
+      return
+    }
+    setNewSkillSaving(true)
+    setNewSkillError('')
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) { setNewSkillSaving(false); return }
+
+    // Slug random: la colonna ha vincolo UNIQUE globale
+    const slug = `personale-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+    const { data, error } = await supabase.from('skills')
+      .insert({ user_id: user.id, slug, label, extra_sys, categoria: 'personale', pubblica: false, professione: null })
+      .select('id, slug, label, extra_sys, professione, categoria').single()
+    setNewSkillSaving(false)
+    if (error || !data) { setNewSkillError('Errore durante il salvataggio'); return }
+
+    setSkills(prev => [...prev, data])
+    setActiveSkills(prev => [...prev, data.slug])
+    setNewSkillOpen(false)
+    setNewSkillLabel('')
+    setNewSkillExtra('')
   }
 
   function buildIntroMessage(
@@ -867,6 +902,43 @@ export default function ChatPage() {
         </div>
       )}
 
+      {/* Modal nuova skill personale */}
+      {newSkillOpen && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 px-4 pb-4" onClick={() => setNewSkillOpen(false)}>
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-xl p-5 w-full max-w-sm" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-sm font-semibold text-gray-900">✦ Nuova skill personale</p>
+              <button onClick={() => setNewSkillOpen(false)} className="text-gray-400 active:text-gray-600 w-6 h-6 flex items-center justify-center">✕</button>
+            </div>
+            <input
+              type="text"
+              value={newSkillLabel}
+              onChange={e => setNewSkillLabel(e.target.value)}
+              maxLength={40}
+              placeholder="Nome (es. Revisione contratti)"
+              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm mb-2 focus:outline-none focus:border-gray-400"
+            />
+            <textarea
+              value={newSkillExtra}
+              onChange={e => setNewSkillExtra(e.target.value)}
+              maxLength={4000}
+              rows={4}
+              placeholder="Istruzioni per l'assistente quando la skill è attiva (es. 'Rispondi sempre con un elenco puntato di rischi...')"
+              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm resize-none focus:outline-none focus:border-gray-400"
+            />
+            <div className="flex items-center justify-between mt-1 mb-3">
+              <p className="text-xs text-gray-300">{newSkillExtra.length}/4000</p>
+              {newSkillError && <p className="text-xs text-red-500">{newSkillError}</p>}
+            </div>
+            <button onClick={createPersonalSkill} disabled={newSkillSaving}
+              className="w-full py-3 bg-gray-900 text-white text-sm font-medium rounded-xl disabled:opacity-40 active:opacity-80">
+              {newSkillSaving ? 'Salvo...' : 'Crea e attiva'}
+            </button>
+            <p className="text-xs text-gray-300 text-center mt-2">Modifica ed eliminazione dal Profilo → ✦ Skill</p>
+          </div>
+        </div>
+      )}
+
       {/* Dialog scelta file */}
       {showFileDialog && pendingFile && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 px-4 pb-4">
@@ -1071,6 +1143,13 @@ export default function ChatPage() {
                   {skill.label}
                 </button>
               ))}
+              {showSkills && (
+                <button onClick={() => { setNewSkillOpen(true); setNewSkillError('') }}
+                  title="Crea skill personale"
+                  className="text-xs px-3 py-1.5 rounded-full border border-dashed border-gray-300 text-gray-400 active:text-gray-600 transition-all">
+                  +
+                </button>
+              )}
             </div>
           </div>
         )}
