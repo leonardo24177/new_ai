@@ -61,7 +61,7 @@ interface PersonalSkill {
 // Limiti skill personali (enforcement client-side; la RLS garantisce solo l'ownership)
 const MAX_SKILL_PERSONALI = 10
 const MAX_SKILL_LABEL = 40
-const MAX_SKILL_ISTRUZIONI = 4000
+const MAX_SKILL_ISTRUZIONI = 8000
 
 // File/cartelle da ignorare nell'upload cartella
 const IGNORA = ['node_modules', '.git', '.next', 'dist', 'build', '.cache', '__pycache__', '.DS_Store', 'Thumbs.db']

@@ -315,7 +315,7 @@ export default function ChatPage() {
   // Stessi limiti del tab Skill nel profilo (enforcement client-side, la RLS garantisce l'ownership)
   async function createPersonalSkill() {
     const label = newSkillLabel.trim().slice(0, 40)
-    const extra_sys = newSkillExtra.trim().slice(0, 4000)
+    const extra_sys = newSkillExtra.trim().slice(0, 8000)
     if (!label || !extra_sys) { setNewSkillError('Compila nome e istruzioni'); return }
     if (skills.filter(s => s.slug.startsWith('personale-')).length >= 10) {
       setNewSkillError('Massimo 10 skill personali — gestiscile dal profilo')
@@ -921,13 +921,13 @@ export default function ChatPage() {
             <textarea
               value={newSkillExtra}
               onChange={e => setNewSkillExtra(e.target.value)}
-              maxLength={4000}
+              maxLength={8000}
               rows={4}
               placeholder="Istruzioni per l'assistente quando la skill è attiva (es. 'Rispondi sempre con un elenco puntato di rischi...')"
               className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm resize-none focus:outline-none focus:border-gray-400"
             />
             <div className="flex items-center justify-between mt-1 mb-3">
-              <p className="text-xs text-gray-300">{newSkillExtra.length}/4000</p>
+              <p className="text-xs text-gray-300">{newSkillExtra.length}/8000</p>
               {newSkillError && <p className="text-xs text-red-500">{newSkillError}</p>}
             </div>
             <button onClick={createPersonalSkill} disabled={newSkillSaving}
