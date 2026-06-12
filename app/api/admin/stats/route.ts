@@ -25,14 +25,29 @@ export async function GET() {
 
     if (!admin) return NextResponse.json({ error: 'Non autorizzato' }, { status: 403 })
 
-    // Statistiche globali — conversation_id aggiunto per collegare i messaggi agli utenti
-    const { data: globalStats } = await service
-      .from('messages')
-      .select('modello, tokens_input, tokens_output, costo_stimato, created_at, conversation_id')
-      .eq('ruolo', 'assistant')
-      .not('modello', 'is', null)
-
-    if (!globalStats) return NextResponse.json({ stats: [] })
+    // Statistiche globali — conversation_id aggiunto per collegare i messaggi agli utenti.
+    // Supabase tronca ogni select a 1000 righe: si pagina con .range() finché il batch è pieno.
+    const PAGE = 1000
+    const globalStats: {
+      modello: string | null
+      tokens_input: number | null
+      tokens_output: number | null
+      costo_stimato: number | string | null
+      created_at: string | null
+      conversation_id: string
+    }[] = []
+    for (let from = 0; ; from += PAGE) {
+      const { data, error } = await service
+        .from('messages')
+        .select('modello, tokens_input, tokens_output, costo_stimato, created_at, conversation_id')
+        .eq('ruolo', 'assistant')
+        .not('modello', 'is', null)
+        .order('id')
+        .range(from, from + PAGE - 1)
+      if (error) throw error
+      globalStats.push(...(data || []))
+      if (!data || data.length < PAGE) break
+    }
 
     // Aggrega per modello
     const perModello: Record<string, {
@@ -60,14 +75,19 @@ export async function GET() {
       perModello[m].costo_totale += Number(msg.costo_stimato) || 0
     }
 
-    // Costo per utente
-    const { data: conversations } = await service
-      .from('conversations')
-      .select('id, user_id')
-
+    // Costo per utente — anche qui si pagina oltre il limite di 1000 righe
     const convMap: Record<string, string> = {}
-    for (const c of conversations || []) {
-      convMap[c.id] = c.user_id
+    for (let from = 0; ; from += PAGE) {
+      const { data, error } = await service
+        .from('conversations')
+        .select('id, user_id')
+        .order('id')
+        .range(from, from + PAGE - 1)
+      if (error) throw error
+      for (const c of data || []) {
+        convMap[c.id] = c.user_id
+      }
+      if (!data || data.length < PAGE) break
     }
 
     const perUtente: Record<string, {

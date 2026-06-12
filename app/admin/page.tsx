@@ -755,11 +755,18 @@ export default function AdminPage() {
                 {/* Per utente */}
                 <div className="bg-white rounded-2xl border border-gray-200 p-5">
                   <h3 className="text-sm font-semibold text-gray-900 mb-4">Costo per utente</h3>
-                  {stats.per_utente.length === 0 ? (
+                  {(() => {
+                    // In coda alla lista anche gli utenti registrati senza messaggi, a costo zero
+                    const conCosti = new Set(stats.per_utente.map(u => u.user_id))
+                    const aCostoZero = users
+                      .filter(u => !conCosti.has(u.id))
+                      .map(u => ({ user_id: u.id, messaggi: 0, costo_totale: 0, modelli: {} as Record<string, number> }))
+                    const tutti = [...stats.per_utente, ...aCostoZero]
+                    return tutti.length === 0 ? (
                     <p className="text-xs text-gray-400">Nessun dato ancora</p>
                   ) : (
                     <div className="space-y-2">
-                      {stats.per_utente.slice(0, 10).map(u => (
+                      {tutti.map(u => (
                         <div key={u.user_id} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
                           <div className="flex-1 min-w-0">
                             <p className="text-sm text-gray-900 truncate">{getUserEmail(u.user_id)}</p>
@@ -778,7 +785,8 @@ export default function AdminPage() {
                         </div>
                       ))}
                     </div>
-                  )}
+                  )
+                  })()}
                 </div>
 
                 {/* Grafico giornaliero */}
