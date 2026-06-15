@@ -116,6 +116,18 @@ function formatFileSize(bytes: number): string {
   return (bytes / 1024 / 1024).toFixed(1) + ' MB'
 }
 
+function fileTipoCategoria(file: AdminFile): string {
+  if (file.tipo === 'link') return 'link'
+  const m = file.mime_type || ''
+  if (m.startsWith('image/')) return 'immagine'
+  if (m === 'application/pdf') return 'pdf'
+  if (m === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || m === 'application/msword') return 'word'
+  if (m === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || m === 'application/vnd.ms-excel') return 'excel'
+  if (m === 'application/vnd.openxmlformats-officedocument.presentationml.presentation') return 'pptx'
+  if (m.startsWith('text/') || m === 'application/json' || m === 'application/xml') return 'testo'
+  return 'altro'
+}
+
 function metadataSummary(action: string, meta: Record<string, unknown>): string {
   switch (action) {
     case 'chat_message':
@@ -148,6 +160,7 @@ export default function AdminPage() {
   const [adminFiles, setAdminFiles] = useState<AdminFile[]>([])
   const [filesLoading, setFilesLoading] = useState(false)
   const [fileUserFilter, setFileUserFilter] = useState('')
+  const [fileTypeFilter, setFileTypeFilter] = useState('')
   const [expandedFile, setExpandedFile] = useState<string | null>(null)
   const [fileContents, setFileContents] = useState<Record<string, FileContent | 'loading' | 'error'>>({})
   const [personalSkills, setPersonalSkills] = useState<PersonalSkillAdmin[]>([])
@@ -868,18 +881,33 @@ export default function AdminPage() {
               </button>
             </div>
 
-            <select value={fileUserFilter} onChange={e => setFileUserFilter(e.target.value)}
-              className="w-full mb-4 px-3 py-2.5 border border-gray-200 rounded-xl text-sm bg-white text-gray-700 focus:outline-none focus:border-gray-400">
-              <option value="">Tutti gli utenti</option>
-              {users.map(u => <option key={u.id} value={u.id}>{u.email}</option>)}
-            </select>
+            <div className="flex gap-2 mb-4">
+              <select value={fileUserFilter} onChange={e => setFileUserFilter(e.target.value)}
+                className="flex-1 px-3 py-2.5 border border-gray-200 rounded-xl text-sm bg-white text-gray-700 focus:outline-none focus:border-gray-400">
+                <option value="">Tutti gli utenti</option>
+                {users.map(u => <option key={u.id} value={u.id}>{u.email}</option>)}
+              </select>
+              <select value={fileTypeFilter} onChange={e => setFileTypeFilter(e.target.value)}
+                className="flex-1 px-3 py-2.5 border border-gray-200 rounded-xl text-sm bg-white text-gray-700 focus:outline-none focus:border-gray-400">
+                <option value="">Tutti i tipi</option>
+                <option value="pdf">PDF</option>
+                <option value="immagine">Immagini</option>
+                <option value="word">Word</option>
+                <option value="excel">Excel</option>
+                <option value="pptx">PowerPoint</option>
+                <option value="testo">Testo / Codice</option>
+                <option value="link">Link</option>
+                <option value="altro">Altro</option>
+              </select>
+            </div>
 
             {filesLoading ? (
               <div className="bg-white rounded-2xl border border-gray-200 p-8 text-center">
                 <p className="text-gray-400 text-sm">Caricamento...</p>
               </div>
             ) : (() => {
-              const filtrati = fileUserFilter ? adminFiles.filter(f => f.user_id === fileUserFilter) : adminFiles
+              let filtrati = fileUserFilter ? adminFiles.filter(f => f.user_id === fileUserFilter) : adminFiles
+              if (fileTypeFilter) filtrati = filtrati.filter(f => fileTipoCategoria(f) === fileTypeFilter)
               return filtrati.length === 0 ? (
                 <div className="bg-white rounded-2xl border border-gray-200 p-8 text-center">
                   <p className="text-gray-400 text-sm">Nessun file</p>
