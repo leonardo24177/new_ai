@@ -55,6 +55,11 @@ interface AdminFile {
   created_at: string
 }
 
+type FileContent =
+  | { type: 'text'; testo: string; nome: string }
+  | { type: 'image'; url: string; nome: string }
+  | { type: 'link'; url: string }
+
 interface PersonalSkillAdmin {
   id: string
   user_id: string
@@ -143,6 +148,8 @@ export default function AdminPage() {
   const [adminFiles, setAdminFiles] = useState<AdminFile[]>([])
   const [filesLoading, setFilesLoading] = useState(false)
   const [fileUserFilter, setFileUserFilter] = useState('')
+  const [expandedFile, setExpandedFile] = useState<string | null>(null)
+  const [fileContents, setFileContents] = useState<Record<string, FileContent | 'loading' | 'error'>>({})
   const [personalSkills, setPersonalSkills] = useState<PersonalSkillAdmin[]>([])
   const [expandedPersonalSkill, setExpandedPersonalSkill] = useState<string | null>(null)
   const [users, setUsers] = useState<User[]>([])
@@ -206,6 +213,28 @@ export default function AdminPage() {
       setAdminFiles(data.files || [])
     } finally {
       setFilesLoading(false)
+    }
+  }
+
+  async function loadFileContent(file: AdminFile) {
+    const id = file.id
+    if (expandedFile === id) {
+      setExpandedFile(null)
+      return
+    }
+    setExpandedFile(id)
+    if (fileContents[id]) return
+    setFileContents(prev => ({ ...prev, [id]: 'loading' }))
+    try {
+      const res = await fetch(`/api/admin/files/${id}`)
+      const data = await res.json()
+      if (!res.ok) {
+        setFileContents(prev => ({ ...prev, [id]: 'error' }))
+      } else {
+        setFileContents(prev => ({ ...prev, [id]: data as FileContent }))
+      }
+    } catch {
+      setFileContents(prev => ({ ...prev, [id]: 'error' }))
     }
   }
 
@@ -862,7 +891,7 @@ export default function AdminPage() {
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium text-gray-900 truncate">
-                            {file.tipo === 'link' ? '🔗' : '📄'} {file.nome}
+                            {file.tipo === 'link' ? '🔗' : file.mime_type?.startsWith('image/') ? '🖼️' : '📄'} {file.nome}
                           </p>
                           <div className="flex items-center gap-2 mt-1 flex-wrap">
                             <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">{getUserEmail(file.user_id)}</span>
@@ -871,13 +900,70 @@ export default function AdminPage() {
                             <span className="text-xs text-gray-400">{new Date(file.created_at).toLocaleDateString('it-IT')}</span>
                           </div>
                         </div>
-                        <button
-                          onClick={() => deleteAdminFile(file)}
-                          className="flex-shrink-0 text-xs px-3 py-2 border border-red-200 rounded-lg text-red-500 active:bg-red-50 transition-colors"
-                        >
-                          Elimina
-                        </button>
+                        <div className="flex flex-col gap-1.5 flex-shrink-0">
+                          <button
+                            onClick={() => loadFileContent(file)}
+                            className="text-xs px-3 py-2 border border-gray-200 rounded-lg text-gray-600 active:border-gray-400 transition-colors"
+                          >
+                            {expandedFile === file.id ? 'Chiudi' : 'Visualizza'}
+                          </button>
+                          <button
+                            onClick={() => deleteAdminFile(file)}
+                            className="text-xs px-3 py-2 border border-red-200 rounded-lg text-red-500 active:bg-red-50 transition-colors"
+                          >
+                            Elimina
+                          </button>
+                        </div>
                       </div>
+
+                      {expandedFile === file.id && (() => {
+                        const content = fileContents[file.id]
+                        if (!content || content === 'loading') {
+                          return (
+                            <div className="mt-3 pt-3 border-t border-gray-100">
+                              <p className="text-xs text-gray-400">Caricamento...</p>
+                            </div>
+                          )
+                        }
+                        if (content === 'error') {
+                          return (
+                            <div className="mt-3 pt-3 border-t border-gray-100">
+                              <p className="text-xs text-red-400">Errore caricamento contenuto</p>
+                            </div>
+                          )
+                        }
+                        if (content.type === 'link') {
+                          return (
+                            <div className="mt-3 pt-3 border-t border-gray-100">
+                              <p className="text-xs text-gray-500 mb-1">URL</p>
+                              <a href={content.url} target="_blank" rel="noopener noreferrer"
+                                className="text-xs text-blue-600 underline break-all">
+                                {content.url}
+                              </a>
+                            </div>
+                          )
+                        }
+                        if (content.type === 'image') {
+                          return (
+                            <div className="mt-3 pt-3 border-t border-gray-100">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={content.url} alt={content.nome}
+                                className="max-w-full max-h-96 rounded-xl object-contain bg-gray-50" />
+                            </div>
+                          )
+                        }
+                        return (
+                          <div className="mt-3 pt-3 border-t border-gray-100">
+                            {content.testo ? (
+                              <pre className="text-xs text-gray-700 whitespace-pre-wrap font-mono leading-relaxed overflow-x-auto max-h-96 overflow-y-auto bg-gray-50 rounded-xl p-3">
+                                {content.testo}
+                              </pre>
+                            ) : (
+                              <p className="text-xs text-gray-400">Nessun testo estratto</p>
+                            )}
+                          </div>
+                        )
+                      })()}
                     </div>
                   ))}
                 </div>
