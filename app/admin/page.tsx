@@ -543,7 +543,8 @@ export default function AdminPage() {
             ) : (
               users.map(user => (
                 <div key={user.id} className="bg-white rounded-2xl border border-gray-200 p-4">
-                  <div className="flex items-start justify-between gap-3">
+                  {/* Header: info + stato approvazione */}
+                  <div className="flex items-start justify-between gap-3 mb-3">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1 flex-wrap">
                         <p className="text-sm font-semibold text-gray-900">{user.nome || 'Senza nome'}</p>
@@ -557,52 +558,54 @@ export default function AdminPage() {
                       </div>
                       <p className="text-xs text-gray-400">{user.email}</p>
                       <p className="text-xs text-gray-300 mt-0.5">
-                        {new Date(user.created_at).toLocaleDateString('it-IT')} · limite ${user.limite_mensile.toFixed(2)}/mese
+                        {new Date(user.created_at).toLocaleDateString('it-IT')}
+                        {' · '}limite ${user.limite_mensile.toFixed(2)}/mese
+                        {user.modello_max && <span className="text-amber-500"> · cap: {user.modello_max}</span>}
                       </p>
                     </div>
-                    {/* Bottoni verticali su mobile per più spazio */}
-                    <div className="flex flex-col gap-1.5 flex-shrink-0">
-                      <button
-                        onClick={() => approveUser(user.id, !user.approvato)}
-                        className={`text-xs px-3 py-2 rounded-lg transition-colors ${
-                          user.approvato
-                            ? 'border border-green-200 text-green-600 bg-green-50 active:bg-green-100'
-                            : 'border border-orange-200 text-orange-600 bg-orange-50 active:bg-orange-100'
-                        }`}
-                      >
-                        {user.approvato ? '✓ Approvato' : 'Approva'}
-                      </button>
-                      <button
-                        onClick={() => setSelectedUser(selectedUser?.id === user.id ? null : user)}
-                        className="text-xs px-3 py-2 border border-gray-200 rounded-lg text-gray-600 active:border-gray-400 transition-colors"
-                      >
-                        {selectedUser?.id === user.id ? 'Chiudi' : 'Prompt'}
-                      </button>
-                      <button
-                        onClick={() => { setPasswordUser(passwordUser === user.id ? null : user.id); setNewPassword('') }}
-                        className="text-xs px-3 py-2 border border-gray-200 rounded-lg text-gray-600 active:border-gray-400 transition-colors"
-                      >
-                        Password
-                      </button>
-                      <button
-                        onClick={() => { setLimitUser(limitUser === user.id ? null : user.id); setNewLimit(String(user.limite_mensile)) }}
-                        className="text-xs px-3 py-2 border border-gray-200 rounded-lg text-gray-600 active:border-gray-400 transition-colors"
-                      >
-                        Limite
-                      </button>
-                      <button
-                        onClick={() => { setModelCapUser(modelCapUser === user.id ? null : user.id); setNewModelCap(user.modello_max || '') }}
-                        className={`text-xs px-3 py-2 border rounded-lg transition-colors ${user.modello_max ? 'border-amber-200 text-amber-600 bg-amber-50 active:bg-amber-100' : 'border-gray-200 text-gray-600 active:border-gray-400'}`}
-                      >
-                        {user.modello_max ? `Cap: ${user.modello_max}` : 'Modello'}
-                      </button>
-                      <button
-                        onClick={() => deleteUser(user.id)}
-                        className="text-xs px-3 py-2 border border-red-200 rounded-lg text-red-500 active:bg-red-50 transition-colors"
-                      >
-                        Elimina
-                      </button>
-                    </div>
+                    <button
+                      onClick={() => approveUser(user.id, !user.approvato)}
+                      className={`text-xs px-3 py-1.5 rounded-lg transition-colors flex-shrink-0 ${
+                        user.approvato
+                          ? 'border border-green-200 text-green-600 bg-green-50 active:bg-green-100'
+                          : 'border border-orange-200 text-orange-600 bg-orange-50 active:bg-orange-100'
+                      }`}
+                    >
+                      {user.approvato ? '✓ Approvato' : 'Approva'}
+                    </button>
+                  </div>
+                  {/* Azioni orizzontali */}
+                  <div className="flex items-center gap-1.5 flex-wrap border-t border-gray-100 pt-3">
+                    <button
+                      onClick={() => setSelectedUser(selectedUser?.id === user.id ? null : user)}
+                      className="text-xs px-3 py-1.5 border border-gray-200 rounded-lg text-gray-600 active:border-gray-400 transition-colors"
+                    >
+                      {selectedUser?.id === user.id ? 'Chiudi' : 'Prompt'}
+                    </button>
+                    <button
+                      onClick={() => { setPasswordUser(passwordUser === user.id ? null : user.id); setNewPassword('') }}
+                      className="text-xs px-3 py-1.5 border border-gray-200 rounded-lg text-gray-600 active:border-gray-400 transition-colors"
+                    >
+                      Password
+                    </button>
+                    <button
+                      onClick={() => { setLimitUser(limitUser === user.id ? null : user.id); setNewLimit(String(user.limite_mensile)) }}
+                      className="text-xs px-3 py-1.5 border border-gray-200 rounded-lg text-gray-600 active:border-gray-400 transition-colors"
+                    >
+                      Limite
+                    </button>
+                    <button
+                      onClick={() => { setModelCapUser(modelCapUser === user.id ? null : user.id); setNewModelCap(user.modello_max || '') }}
+                      className={`text-xs px-3 py-1.5 border rounded-lg transition-colors ${user.modello_max ? 'border-amber-200 text-amber-600 bg-amber-50 active:bg-amber-100' : 'border-gray-200 text-gray-600 active:border-gray-400'}`}
+                    >
+                      {user.modello_max ? `Cap: ${user.modello_max}` : 'Modello'}
+                    </button>
+                    <button
+                      onClick={() => deleteUser(user.id)}
+                      className="text-xs px-3 py-1.5 border border-red-200 rounded-lg text-red-500 active:bg-red-50 transition-colors ml-auto"
+                    >
+                      Elimina
+                    </button>
                   </div>
                   {passwordUser === user.id && (
                     <div className="mt-3 pt-3 border-t border-gray-100 flex gap-2">
