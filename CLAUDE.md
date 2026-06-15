@@ -45,6 +45,8 @@ app/
       users/route.ts        ← GET/DELETE utenti (richiede tabella admins)
       stats/route.ts        ← GET statistiche costi per modello/utente/giorno
       files/route.ts        ← GET/DELETE file utenti (storage + record, audit admin_file_deleted)
+      files/[id]/route.ts   ← GET contenuto file: testo estratto, URL firmato immagini, URL link
+      files/[id]/download/route.ts ← GET redirect a URL firmato con Content-Disposition attachment (5 min)
       personal-skills/route.ts ← GET/DELETE skill personali utenti (audit admin_skill_deleted)
       conversations/[id]/route.ts ← GET conversazione + messaggi (viewer chat nel tab Audit)
     conversations/
@@ -116,9 +118,12 @@ skills            id, slug (unique), label, extra_sys, categoria,
 admins            user_id  ← inserimento manuale per abilitare accesso admin
 
 user_limits       user_id (PK, FK auth.users ON DELETE CASCADE),
-                  limite_mensile (numeric, default 5.00), created_at
-                  ← tetto costo mensile per utente; solo policy SELECT,
-                    scrittura via service role/SQL Editor (vedi user_limits_migration.sql)
+                  limite_mensile (numeric, default 5.00),
+                  modello_max (text, nullable, CHECK IN ('haiku','sonnet','opus')),
+                  created_at
+                  ← tetto costo mensile e cap modello per utente; solo policy SELECT,
+                    scrittura via service role/SQL Editor (vedi user_limits_migration.sql,
+                    modello_max_migration.sql)
 
 conversation_shares  id, conversation_id (FK conversations ON DELETE CASCADE),
                      owner_user_id, share_token (unique), password_hash (scrypt salato
@@ -165,6 +170,8 @@ SENTRY_AUTH_TOKEN               ← token per upload source maps in build
 - **Rate limiting fuori dalla chat**: le altre route che chiamano Claude usano `superaLimiteOrario()` (`lib/rate-limit.ts`), che conta le azioni su `audit_logs` via service role: upload 30/ora (`file_upload`), onboarding 10/ora (`onboarding_generate`, loggata a inizio richiesta). `PATCH /api/conversations` non ha contatore ma verifica l'ownership della conversazione prima della chiamata e tronca `primo_messaggio` a 500 caratteri. `generate-multi` accetta max 3 ambiti per richiesta.
 - **max_tokens**: 8192 per tutti i modelli (Haiku, Sonnet, Opus).
 - **Limite costo mensile**: per utente, letto da `user_limits.limite_mensile` con fallback $5/mese (costante `COSTO_MENSILE_MAX` in `/api/chat/route.ts`). Calcolato in parallelo al rate limiting sommando `costo_stimato` dei messaggi dal primo del mese. Restituisce 429 con messaggio che invita a contattare il supporto. Il limite per utente si modifica dal tab Utenti dell'admin (bottone "Limite" → `PATCH /api/admin/users` con `limite_mensile`, upsert su `user_limits` via service role, audit action `limit_changed`). La tabella non ha policy di scrittura — l'utente non può modificarsi il limite (vedi `supabase/rls/user_limits_migration.sql`). Il default è `COSTO_MENSILE_DEFAULT` in `lib/model-pricing.ts`.
+- **Cap modello per utente**: `user_limits.modello_max` (nullable, valori `'haiku'|'sonnet'|'opus'`) limita il modello massimo usabile da un utente. Letto da `/api/chat/route.ts` insieme a `limite_mensile` e passato a `selectModel()` come `modeloCap`. In `lib/model-selector.ts`, se il modello selezionato supera il cap, viene abbassato al massimo consentito (la nota `[cap utente: X]` appare nel `reason`). Si imposta dal tab Utenti dell'admin (bottone "Modello" → `PATCH /api/admin/users` con `modello_max`, audit action `model_cap_changed`). Eseguire `supabase/rls/modello_max_migration.sql` per aggiungere la colonna.
+- **Admin tab File**: visualizzazione contenuto file (bottone "Visualizza" → lazy load via `GET /api/admin/files/[id]`; testo in `<pre>` scrollabile, immagini come anteprima inline, link come URL cliccabile) e download (bottone "Scarica" → redirect a URL firmato Supabase con `Content-Disposition: attachment`, scadenza 5 min). Filtri client-side: utente, tipo file (PDF/immagine/Word/Excel/PPTX/testo/link) e contesto (profilo/chat).
 - **Cookie banner**: `CookieBanner.tsx` incluso in `layout.tsx`. Usa `localStorage.cookie_consent` per ricordare l'accettazione. Solo cookie tecnici — nessuna CMP complessa necessaria.
 - **File upload — formati supportati**: PDF (con fallback OCR via Claude Haiku se testo < 100 char), DOCX, XLSX, XLS, PPTX (parsing XML via jszip), immagini (JPEG/PNG/GIF/WebP), testo, codice. Formati `.doc`, `.ppt` restituiscono errore esplicito che chiede di convertire.
 - **File upload — OCR**: `pdf-parse` è alla v2 (classe `PDFParse` + `getText()`, non più funzione — non regredire alla vecchia API). Se il testo estratto è sotto la soglia `max(100, 80 × pagine)` (i PDF scansionati con intestazione digitale producono ~20 char/pagina), il PDF viene inviato a Claude Haiku come documento nativo in **streaming**: al timeout di 50s si conserva il testo parziale accumulato. La route ha `export const maxDuration = 60`.
@@ -175,7 +182,7 @@ SENTRY_AUTH_TOKEN               ← token per upload source maps in build
 - **Lingua**: tutta la UI, i messaggi di errore e i commenti sono in italiano.
 - **Niente console.log** in produzione — usare solo `console.error` per errori reali.
 - **Skills per ambito**: in chat le skill visibili sono filtrate per `ambitoAttivo` — lavoro vede skill della propria professione + skill globali (`professione = null`); studio e personale vedono solo skill globali. Non mostrare tutte le skill indifferentemente dall'ambito.
-- **Skill personali**: l'utente le crea dal tab "✦ Skill" del profilo o dal pulsante "+" in coda alle skill in chat (modal "Crea e attiva", che attiva subito la skill creata; modifica/eliminazione solo dal profilo). Max 10, label 40 char, istruzioni 8000 char — limiti client-side, la RLS garantisce solo l'ownership). Salvate in `skills` con `user_id` valorizzato, `pubblica = false`, `professione = null` (visibili in ogni ambito), slug random `personale-...` per rispettare il vincolo UNIQUE globale. La route `/api/chat` non distingue: risolve gli slug col JWT utente e la RLS (`(pubblica AND user_id IS NULL) OR auth.uid() = user_id`) impedisce di iniettare skill personali altrui. Il pannello admin filtra `user_id IS NULL` nella gestione globale; le skill personali si vedono/eliminano dalla sezione dedicata del tab Skill (via `/api/admin/personal-skills`), i file utenti dal tab File (via `/api/admin/files`, che rimuove anche l'oggetto storage).
+- **Skill personali**: l'utente le crea dal tab "✦ Skill" del profilo o dal pulsante "+" in coda alle skill in chat (modal "Crea e attiva", che attiva subito la skill creata; modifica/eliminazione solo dal profilo). Max 10, label 40 char, istruzioni 8000 char — limiti client-side, la RLS garantisce solo l'ownership). Salvate in `skills` con `user_id` valorizzato, `pubblica = false`, `professione = null` (visibili in ogni ambito), slug random `personale-...` per rispettare il vincolo UNIQUE globale. La route `/api/chat` non distingue: risolve gli slug col JWT utente e la RLS (`(pubblica AND user_id IS NULL) OR auth.uid() = user_id`) impedisce di iniettare skill personali altrui. Il pannello admin filtra `user_id IS NULL` nella gestione globale; le skill personali si vedono/eliminano dalla sezione dedicata del tab Skill (via `/api/admin/personal-skills`), i file utenti dal tab File (via `/api/admin/files`, che rimuove anche l'oggetto storage). Le skill personali appaiono in cima al selettore in chat (prima di quelle globali).
 - **Sentry**: inizializzato via `instrumentation.ts` (server) e `instrumentation.client.ts` (client) — questi file sono caricati automaticamente da Next.js. Non usare `tunnelRoute` in `withSentryConfig` (incompatibile con Turbopack). Il DSN è hardcoded nei file di istrumentazione perché le env var non sono disponibili in quel contesto con Turbopack.
 - **RLS Supabase**: le policy sono in `supabase/rls/policies.sql` — script idempotente con `DROP POLICY IF EXISTS` prima di ogni `CREATE POLICY`. Eseguire nel SQL Editor di Supabase dopo ogni modifica allo schema.
 - **Email transazionali**: Resend via SMTP configurato su Supabase Auth. Welcome email inviata da `/api/email/welcome` dopo la registrazione. Richiede `RESEND_API_KEY` e `RESEND_FROM_EMAIL`. La route non può richiedere auth (la signUp non crea sessione): verifica via service role che l'email appartenga a un utente registrato negli ultimi 15 minuti, prende il nome da `user_metadata` (mai dal body) e lo passa per `escapeHtml()`.
