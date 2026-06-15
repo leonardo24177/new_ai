@@ -907,6 +907,14 @@ export default function AdminPage() {
                           >
                             {expandedFile === file.id ? 'Chiudi' : 'Visualizza'}
                           </button>
+                          {file.tipo !== 'link' && (
+                            <a
+                              href={`/api/admin/files/${file.id}/download`}
+                              className="text-xs px-3 py-2 border border-blue-200 rounded-lg text-blue-600 active:bg-blue-50 transition-colors text-center"
+                            >
+                              Scarica
+                            </a>
+                          )}
                           <button
                             onClick={() => deleteAdminFile(file)}
                             className="text-xs px-3 py-2 border border-red-200 rounded-lg text-red-500 active:bg-red-50 transition-colors"
