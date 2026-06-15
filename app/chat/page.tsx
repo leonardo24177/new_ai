@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import ReactMarkdown from 'react-markdown'
 import { toast } from 'sonner'
+import GuidePanel from '@/components/GuidePanel'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -1071,13 +1072,14 @@ export default function ChatPage() {
           <div className="flex items-center gap-1.5 flex-shrink-0">
             {ambitiDisponibili.length > 1 ? (
               <button onClick={() => setShowAmbitoMenu(true)}
+                data-tour="ambiti"
                 className={`flex items-center gap-1 px-2 py-1.5 rounded-full text-xs font-medium bg-white/15 active:bg-white/25 ${theme.headerText}`}>
                 <span>{ambitoConfig?.emoji}</span>
                 <span className="hidden sm:inline">{ambitoConfig?.label}</span>
                 <span className="opacity-60">▾</span>
               </button>
             ) : ambitoAttivo ? (
-              <span className={`flex items-center gap-1 px-2 py-1.5 rounded-full text-xs font-medium bg-white/15 ${theme.headerText}`}>
+              <span data-tour="ambiti" className={`flex items-center gap-1 px-2 py-1.5 rounded-full text-xs font-medium bg-white/15 ${theme.headerText}`}>
                 <span>{ambitoConfig?.emoji}</span>
                 <span className="hidden sm:inline">{ambitoConfig?.label}</span>
               </span>
@@ -1088,6 +1090,7 @@ export default function ChatPage() {
               ✏️
             </button>
             <button onClick={() => router.push('/profile')}
+              data-tour="profilo-btn"
               className={`hidden sm:flex w-8 h-8 items-center justify-center rounded-full bg-white/10 hover:bg-white/20 ${theme.headerText} opacity-70 hover:opacity-100`}>
               👤
             </button>
@@ -1134,7 +1137,7 @@ export default function ChatPage() {
         {visibleSkills.length > 0 && (
           <div className="px-3 pb-1.5 flex-shrink-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <button onClick={() => setShowSkills(!showSkills)} className="text-xs text-gray-500 active:text-gray-700 flex items-center gap-1 py-1">
+              <button onClick={() => setShowSkills(!showSkills)} data-tour="skill-selector" className="text-xs text-gray-500 active:text-gray-700 flex items-center gap-1 py-1">
                 ✦ Skill {activeSkills.length > 0 && `(${activeSkills.length})`}
               </button>
               {showSkills && visibleSkills.map(skill => (
@@ -1167,8 +1170,9 @@ export default function ChatPage() {
         {/* Input */}
         <div className={`border-t ${theme.headerBorder} px-3 py-2 bg-white flex-shrink-0`}
           style={{ paddingBottom: 'max(8px, env(safe-area-inset-bottom))' }}>
-          <div className={`flex items-end gap-1.5 ${theme.inputBg} border ${isRecording ? 'border-red-400' : theme.inputBorder} rounded-2xl px-2.5 py-2 transition-colors`}>
+          <div data-tour="input-area" className={`flex items-end gap-1.5 ${theme.inputBg} border ${isRecording ? 'border-red-400' : theme.inputBorder} rounded-2xl px-2.5 py-2 transition-colors`}>
             <button onClick={() => fileInputRef.current?.click()} disabled={uploading}
+              data-tour="file-upload"
               className="w-8 h-8 flex items-center justify-center text-gray-400 active:text-gray-600 disabled:opacity-40 flex-shrink-0">
               {uploading ? (
                 <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
@@ -1229,6 +1233,8 @@ export default function ChatPage() {
           </div>
         </div>
       </div>
+
+      <GuidePanel pagina="chat" />
     </div>
   )
 }

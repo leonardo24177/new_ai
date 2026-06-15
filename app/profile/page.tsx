@@ -13,6 +13,7 @@ import {
 } from '@/lib/onboarding/config'
 import DriveFolderPicker, { DriveFolder } from '@/components/DriveFolderPicker'
 import FileTree from '@/components/FileTree'
+import GuidePanel from '@/components/GuidePanel'
 
 type Ambito = 'lavoro' | 'studio' | 'personale'
 
@@ -532,6 +533,7 @@ export default function ProfilePage() {
             { key: 'link', label: '🔗 Link' },
           ].map(tab => (
             <button key={tab.key}
+              data-tour={`tab-${tab.key}`}
               onClick={() => {
                 setActiveTab(tab.key as 'ambiti' | 'file' | 'drive' | 'prompt' | 'link' | 'skill')
                 if (tab.key === 'link') loadShares()
@@ -1208,6 +1210,8 @@ export default function ProfilePage() {
           </div>
         </div>
       </div>
+
+      <GuidePanel pagina="profilo" />
     </div>
   )
 }
