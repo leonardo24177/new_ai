@@ -45,7 +45,7 @@ export async function GET() {
 
     const { data: limits } = await service
       .from('user_limits')
-      .select('user_id, limite_mensile')
+      .select('user_id, limite_mensile, modello_max')
 
     const { data: authData, error } = await service.auth.admin.listUsers({ page: 1, perPage: 1000 })
 
@@ -76,6 +76,7 @@ export async function GET() {
         ambiti: userAmbiti.map(a => a.ambito),
         approvato: u.app_metadata?.approvato === true,
         limite_mensile: Number(limits?.find(l => l.user_id === u.id)?.limite_mensile) || COSTO_MENSILE_DEFAULT,
+        modello_max: limits?.find(l => l.user_id === u.id)?.modello_max || null,
       }
     })
 
@@ -95,7 +96,7 @@ export async function PATCH(req: NextRequest) {
     }
     const { service, adminUser } = ctx
 
-    const { user_id, approvato, new_password, limite_mensile } = await req.json()
+    const { user_id, approvato, new_password, limite_mensile, modello_max } = await req.json()
     if (!user_id) {
       return NextResponse.json({ error: 'user_id mancante' }, { status: 400 })
     }
@@ -112,6 +113,24 @@ export async function PATCH(req: NextRequest) {
 
       logAction(adminUser.id, adminUser.email || '', 'limit_changed', {
         target_user_id: user_id, limite_mensile: limite,
+      }).catch(() => {})
+
+      return NextResponse.json({ success: true })
+    }
+
+    if (modello_max !== undefined) {
+      const VALIDI = ['haiku', 'sonnet', 'opus', null, '']
+      if (!VALIDI.includes(modello_max)) {
+        return NextResponse.json({ error: 'modello_max non valido' }, { status: 400 })
+      }
+      const valore = modello_max || null
+      const { error } = await service
+        .from('user_limits')
+        .upsert({ user_id, modello_max: valore })
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+      logAction(adminUser.id, adminUser.email || '', 'model_cap_changed', {
+        target_user_id: user_id, modello_max: valore,
       }).catch(() => {})
 
       return NextResponse.json({ success: true })

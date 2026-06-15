@@ -8,6 +8,7 @@ export type AuditAction =
   | 'account_delete'
   | 'user_approved'
   | 'limit_changed'
+  | 'model_cap_changed'
   | 'onboarding_generate'
   | 'admin_file_deleted'
   | 'admin_skill_deleted'

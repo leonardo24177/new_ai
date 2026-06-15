@@ -15,6 +15,7 @@ interface User {
   ambiti: string[]
   approvato: boolean
   limite_mensile: number
+  modello_max: string | null
 }
 
 interface Skill {
@@ -104,6 +105,7 @@ function actionColor(action: string): string {
     case 'account_delete': return 'bg-red-100 text-red-700'
     case 'user_approved': return 'bg-teal-100 text-teal-700'
     case 'limit_changed': return 'bg-amber-100 text-amber-700'
+    case 'model_cap_changed': return 'bg-amber-100 text-amber-700'
     case 'admin_file_deleted':  return 'bg-red-100 text-red-700'
     case 'admin_skill_deleted': return 'bg-red-100 text-red-700'
     default:              return 'bg-gray-100 text-gray-600'
@@ -144,6 +146,8 @@ function metadataSummary(action: string, meta: Record<string, unknown>): string 
       return `target=${String(meta.target_user_id).slice(0, 8)}… approvato=${meta.approvato}`
     case 'limit_changed':
       return `target=${String(meta.target_user_id).slice(0, 8)}… limite=$${meta.limite_mensile}/mese`
+    case 'model_cap_changed':
+      return `target=${String(meta.target_user_id).slice(0, 8)}… cap=${meta.modello_max || 'rimosso'}`
     case 'admin_file_deleted':
       return `${meta.nome} target=${String(meta.target_user_id).slice(0, 8)}…`
     case 'admin_skill_deleted':
@@ -177,6 +181,9 @@ export default function AdminPage() {
   const [limitUser, setLimitUser] = useState<string | null>(null)
   const [newLimit, setNewLimit] = useState('')
   const [savingLimit, setSavingLimit] = useState(false)
+  const [modelCapUser, setModelCapUser] = useState<string | null>(null)
+  const [newModelCap, setNewModelCap] = useState('')
+  const [savingModelCap, setSavingModelCap] = useState(false)
   const [editingSkill, setEditingSkill] = useState<Skill | null>(null)
   const [newSkill, setNewSkill] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -430,6 +437,26 @@ export default function AdminPage() {
     }
   }
 
+  async function changeModelCap(userId: string) {
+    setSavingModelCap(true)
+    const res = await fetch('/api/admin/users', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: userId, modello_max: newModelCap || null }),
+    })
+    setSavingModelCap(false)
+    if (res.ok) {
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, modello_max: newModelCap || null } : u))
+      setModelCapUser(null)
+      setNewModelCap('')
+      setSuccessMsg('Cap modello aggiornato!')
+      setTimeout(() => setSuccessMsg(''), 2000)
+    } else {
+      const data = await res.json()
+      alert(data.error || 'Errore aggiornamento cap modello')
+    }
+  }
+
   function openEditSkill(skill: Skill) {
     setEditingSkill(skill)
     setSkillForm({ slug: skill.slug, label: skill.label, extra_sys: skill.extra_sys, categoria: skill.categoria, pubblica: skill.pubblica, professione: skill.professione || 'generale' })
@@ -564,6 +591,12 @@ export default function AdminPage() {
                         Limite
                       </button>
                       <button
+                        onClick={() => { setModelCapUser(modelCapUser === user.id ? null : user.id); setNewModelCap(user.modello_max || '') }}
+                        className={`text-xs px-3 py-2 border rounded-lg transition-colors ${user.modello_max ? 'border-amber-200 text-amber-600 bg-amber-50 active:bg-amber-100' : 'border-gray-200 text-gray-600 active:border-gray-400'}`}
+                      >
+                        {user.modello_max ? `Cap: ${user.modello_max}` : 'Modello'}
+                      </button>
+                      <button
                         onClick={() => deleteUser(user.id)}
                         className="text-xs px-3 py-2 border border-red-200 rounded-lg text-red-500 active:bg-red-50 transition-colors"
                       >
@@ -618,6 +651,28 @@ export default function AdminPage() {
                         className="text-xs px-3 py-2 bg-gray-900 text-white rounded-lg disabled:opacity-40 transition-colors"
                       >
                         {savingLimit ? '...' : 'Salva'}
+                      </button>
+                    </div>
+                  )}
+
+                  {modelCapUser === user.id && (
+                    <div className="mt-3 pt-3 border-t border-gray-100 flex gap-2 items-center flex-wrap">
+                      <span className="text-xs text-gray-500 flex-shrink-0">Cap modello</span>
+                      <select
+                        value={newModelCap}
+                        onChange={e => setNewModelCap(e.target.value)}
+                        className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900"
+                      >
+                        <option value="">Automatico (nessun cap)</option>
+                        <option value="sonnet">Max Sonnet — risparmio ~80%</option>
+                        <option value="haiku">Max Haiku — risparmio ~95%</option>
+                      </select>
+                      <button
+                        onClick={() => changeModelCap(user.id)}
+                        disabled={savingModelCap}
+                        className="text-xs px-3 py-2 bg-gray-900 text-white rounded-lg disabled:opacity-40 transition-colors"
+                      >
+                        {savingModelCap ? '...' : 'Salva'}
                       </button>
                     </div>
                   )}

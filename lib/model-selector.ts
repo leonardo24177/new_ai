@@ -11,6 +11,8 @@ interface ModelSelectorInput {
   // Lunghezza del contesto documentale iniettato lato server (file profilo + Drive),
   // invisibile a fileContexts che contiene solo gli allegati chat
   extraContextLength?: number
+  // Cap modello per utente ('haiku' | 'sonnet' | 'opus') — null = nessun limite
+  modeloCap?: string | null
 }
 
 interface ModelSelection {
@@ -132,6 +134,18 @@ export function selectModel(input: ModelSelectorInput): ModelSelection {
   } else {
     model = MODELS.haiku
     reason = `Haiku (score: ${score}) — risposta semplice`
+  }
+
+  // Cap per utente: se impostato, non si può salire oltre quel modello
+  if (input.modeloCap) {
+    const ORDER: string[] = [MODELS.haiku, MODELS.sonnet, MODELS.opus]
+    const capModel = MODELS[input.modeloCap as keyof typeof MODELS]
+    const capIdx = ORDER.indexOf(capModel)
+    const selectedIdx = ORDER.indexOf(model)
+    if (capIdx >= 0 && selectedIdx > capIdx) {
+      model = capModel
+      reason = `${reason} [cap utente: ${input.modeloCap}]`
+    }
   }
 
   return { model, reason, score }

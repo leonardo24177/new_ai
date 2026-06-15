@@ -160,6 +160,8 @@ export async function POST(req: NextRequest) {
       .select('id')
       .eq('user_id', user.id)
 
+    let modelloMax: string | null = null
+
     if (userConvIds && userConvIds.length > 0) {
       const ids = userConvIds.map((c: { id: string }) => c.id)
 
@@ -177,7 +179,7 @@ export async function POST(req: NextRequest) {
           .gte('created_at', primoDelMese),
         supabase
           .from('user_limits')
-          .select('limite_mensile')
+          .select('limite_mensile, modello_max')
           .eq('user_id', user.id)
           .maybeSingle(),
       ])
@@ -189,6 +191,7 @@ export async function POST(req: NextRequest) {
         return new Response(JSON.stringify({ error: 'Limite orario raggiunto. Riprova tra poco.' }), { status: 429 })
       }
 
+      modelloMax = limiteRow?.modello_max || null
       const limiteMensile = Number(limiteRow?.limite_mensile) || COSTO_MENSILE_DEFAULT
       const totaleSpeso = (costoMese || []).reduce((sum: number, m: { costo_stimato: number | null }) => sum + (m.costo_stimato || 0), 0)
       if (totaleSpeso >= limiteMensile) {
@@ -435,6 +438,7 @@ export async function POST(req: NextRequest) {
       activeSkillSlugs: active_skill_slugs || [],
       professione,
       extraContextLength: lunghezzaContestoProfilo,
+      modeloCap: modelloMax,
     })
 
     // 9. Salva messaggio utente
