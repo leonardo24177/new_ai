@@ -161,6 +161,7 @@ export default function AdminPage() {
   const [filesLoading, setFilesLoading] = useState(false)
   const [fileUserFilter, setFileUserFilter] = useState('')
   const [fileTypeFilter, setFileTypeFilter] = useState('')
+  const [fileContextFilter, setFileContextFilter] = useState('')
   const [expandedFile, setExpandedFile] = useState<string | null>(null)
   const [fileContents, setFileContents] = useState<Record<string, FileContent | 'loading' | 'error'>>({})
   const [personalSkills, setPersonalSkills] = useState<PersonalSkillAdmin[]>([])
@@ -899,6 +900,12 @@ export default function AdminPage() {
                 <option value="link">Link</option>
                 <option value="altro">Altro</option>
               </select>
+              <select value={fileContextFilter} onChange={e => setFileContextFilter(e.target.value)}
+                className="flex-1 px-3 py-2.5 border border-gray-200 rounded-xl text-sm bg-white text-gray-700 focus:outline-none focus:border-gray-400">
+                <option value="">Profilo + Chat</option>
+                <option value="profile">Profilo</option>
+                <option value="chat">Chat</option>
+              </select>
             </div>
 
             {filesLoading ? (
@@ -908,6 +915,7 @@ export default function AdminPage() {
             ) : (() => {
               let filtrati = fileUserFilter ? adminFiles.filter(f => f.user_id === fileUserFilter) : adminFiles
               if (fileTypeFilter) filtrati = filtrati.filter(f => fileTipoCategoria(f) === fileTypeFilter)
+              if (fileContextFilter) filtrati = filtrati.filter(f => f.tipo_contesto === fileContextFilter)
               return filtrati.length === 0 ? (
                 <div className="bg-white rounded-2xl border border-gray-200 p-8 text-center">
                   <p className="text-gray-400 text-sm">Nessun file</p>
