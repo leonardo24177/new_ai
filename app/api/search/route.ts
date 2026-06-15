@@ -34,13 +34,13 @@ export async function POST(req: NextRequest) {
     const res = await fetch(url, {
       headers: {
         'Accept': 'application/json',
-        'Accept-Encoding': 'gzip',
         'X-Subscription-Token': apiKey,
       },
     })
 
     if (!res.ok) {
-      console.error('Brave Search error:', res.status)
+      const body = await res.text().catch(() => '')
+      console.error('Brave Search error:', res.status, body.slice(0, 200))
       return NextResponse.json({ error: 'Errore nella ricerca. Riprova.' }, { status: 502 })
     }
 
