@@ -158,7 +158,7 @@ RESEND_FROM_EMAIL               ← email mittente verificata in Resend (es. nor
 SENTRY_ORG                      ← nome organizzazione Sentry (leonardo-stancati)
 SENTRY_PROJECT                  ← nome progetto Sentry (javascript-nextjs)
 SENTRY_AUTH_TOKEN               ← token per upload source maps in build
-BRAVE_SEARCH_API_KEY            ← API key Brave Search (piano gratuito: 2.000 query/mese), solo server
+TAVILY_API_KEY                  ← API key Tavily Search (piano Researcher: 1.000 crediti/mese gratis), solo server
 ```
 
 ## Convenzioni di codice

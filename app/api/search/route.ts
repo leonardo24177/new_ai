@@ -25,40 +25,36 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: `Limite ricerche raggiunto (max ${MAX_RICERCHE_ORA}/ora). Riprova più tardi.` }, { status: 429 })
     }
 
-    const apiKey = process.env.BRAVE_SEARCH_API_KEY
+    const apiKey = process.env.TAVILY_API_KEY
     if (!apiKey) {
       return NextResponse.json({ error: 'Servizio di ricerca non configurato' }, { status: 503 })
     }
 
-    const params = new URLSearchParams({ q, count: '5' })
-    const url = `https://api.search.brave.com/res/v1/web/search?${params}`
-    const res = await fetch(url, {
-      headers: {
-        'Accept': 'application/json',
-        'X-Subscription-Token': apiKey,
-      },
+    const res = await fetch('https://api.tavily.com/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ api_key: apiKey, query: q, max_results: 5 }),
     })
 
     if (!res.ok) {
       const body = await res.text().catch(() => '')
-      console.error('Brave Search error:', res.status, body.slice(0, 500))
+      console.error('Tavily Search error:', res.status, body.slice(0, 500))
       const detail = body ? ` — ${body.slice(0, 120)}` : ''
       const msg =
-        res.status === 401 ? 'API key non valida o non attivata (401)' :
-        res.status === 403 ? 'Piano non autorizzato per web search (403)' :
-        res.status === 422 ? `Query non valida (422)${detail}` :
-        res.status === 429 ? 'Limite Brave Search raggiunto (429)' :
-        `Errore Brave Search ${res.status}${detail}`
+        res.status === 401 ? 'API key Tavily non valida (401)' :
+        res.status === 403 ? 'Piano non autorizzato per la ricerca (403)' :
+        res.status === 429 ? 'Limite Tavily raggiunto (429)' :
+        `Errore ricerca ${res.status}${detail}`
       return NextResponse.json({ error: msg }, { status: 502 })
     }
 
     const data = await res.json()
-    const raw = data?.web?.results || []
+    const raw: { title?: string; url?: string; content?: string }[] = data?.results || []
 
-    const results = raw.slice(0, 5).map((r: { title?: string; url?: string; description?: string }) => ({
+    const results = raw.slice(0, 5).map((r) => ({
       title: r.title || '',
       url: r.url || '',
-      description: r.description || '',
+      description: r.content || '',
     }))
 
     logAction(user.id, user.email || '', 'web_search', { query: q, risultati: results.length }).catch(() => {})
