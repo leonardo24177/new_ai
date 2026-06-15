@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: `Limite ricerche raggiunto (max ${MAX_RICERCHE_ORA}/ora). Riprova più tardi.` }, { status: 429 })
     }
 
-    const apiKey = process.env.TAVILY_API_KEY
+    const apiKey = process.env.TAVILY_API_KEY || process.env.BRAVE_SEARCH_API_KEY
     if (!apiKey) {
       return NextResponse.json({ error: 'Servizio di ricerca non configurato' }, { status: 503 })
     }
