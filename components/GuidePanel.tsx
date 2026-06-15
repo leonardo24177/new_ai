@@ -39,6 +39,11 @@ const TOUR_CHAT: TourStep[] = [
     descrizione: 'Dal profilo carichi fonti permanenti, crei skill personalizzate, colleghi Google Drive e personalizzi le istruzioni base dell\'assistente.',
     target: 'profilo-btn',
   },
+  {
+    titolo: 'Questo pulsante è sempre qui',
+    descrizione: 'Il tasto ? apre la guida in qualsiasi momento. Puoi rivedere il tour, cercare aiuto sulle singole funzioni o leggere la guida completa.',
+    target: 'guide-btn',
+  },
 ]
 
 const TOUR_PROFILO: TourStep[] = [
@@ -65,6 +70,11 @@ const TOUR_PROFILO: TourStep[] = [
     titolo: 'Tab Skill',
     descrizione: 'Crea skill personalizzate visibili solo a te. Massimo 10 skill, attivabili in qualsiasi ambito dalla barra in fondo alla chat.',
     target: 'tab-skill',
+  },
+  {
+    titolo: 'Questo pulsante è sempre qui',
+    descrizione: 'Il tasto ? apre la guida in qualsiasi momento. Puoi rivedere il tour, cercare aiuto sulle singole funzioni o leggere la guida completa.',
+    target: 'guide-btn',
   },
 ]
 
@@ -192,6 +202,7 @@ export default function GuidePanel({ pagina }: { pagina: Pagina }) {
     <>
       {/* Pulsante ? */}
       <button
+        data-tour="guide-btn"
         onClick={() => setDrawerOpen(true)}
         className="fixed z-40 w-9 h-9 rounded-full bg-white border border-gray-200 shadow-md flex items-center justify-center text-gray-500 hover:text-gray-900 hover:shadow-lg transition-all text-sm font-bold select-none"
         style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 72px)', right: '12px' }}
