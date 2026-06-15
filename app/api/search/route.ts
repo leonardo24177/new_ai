@@ -30,7 +30,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Servizio di ricerca non configurato' }, { status: 503 })
     }
 
-    const url = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(q)}&count=5`
+    const params = new URLSearchParams({ q, count: '5' })
+    const url = `https://api.search.brave.com/res/v1/web/search?${params}`
     const res = await fetch(url, {
       headers: {
         'Accept': 'application/json',
@@ -40,13 +41,14 @@ export async function POST(req: NextRequest) {
 
     if (!res.ok) {
       const body = await res.text().catch(() => '')
-      console.error('Brave Search error:', res.status, body.slice(0, 300))
+      console.error('Brave Search error:', res.status, body.slice(0, 500))
+      const detail = body ? ` — ${body.slice(0, 120)}` : ''
       const msg =
         res.status === 401 ? 'API key non valida o non attivata (401)' :
         res.status === 403 ? 'Piano non autorizzato per web search (403)' :
-        res.status === 422 ? 'Query non valida (422)' :
+        res.status === 422 ? `Query non valida (422)${detail}` :
         res.status === 429 ? 'Limite Brave Search raggiunto (429)' :
-        `Errore Brave Search ${res.status}`
+        `Errore Brave Search ${res.status}${detail}`
       return NextResponse.json({ error: msg }, { status: 502 })
     }
 
