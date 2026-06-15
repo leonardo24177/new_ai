@@ -9,42 +9,51 @@ interface TourStep {
   target?: string
 }
 
-const TOUR_CHAT: TourStep[] = [
-  {
-    titolo: 'Benvenuto!',
-    descrizione: 'Ti guidiamo nelle funzioni principali in pochi passi. Puoi saltare in qualsiasi momento o rivedere il tour dalla guida.',
-  },
-  {
-    titolo: 'Contesto attivo',
-    descrizione: 'Se hai configurato più ambiti (Lavoro, Studio, Personale), da qui li cambi al volo. Ogni ambito ha file, istruzioni e conversazioni separati.',
-    target: 'ambiti',
-  },
-  {
-    titolo: 'Skill personalizzate',
-    descrizione: 'Le skill sono istruzioni che specializzano il comportamento dell\'assistente. Attivane una per adattare le risposte al tuo caso d\'uso.',
-    target: 'skill-selector',
-  },
-  {
-    titolo: 'Allega un file',
-    descrizione: 'Carica PDF, Word, Excel, PPTX o immagini. L\'assistente li legge e risponde in base al contenuto. Puoi anche incollare immagini dagli appunti.',
-    target: 'file-upload',
-  },
-  {
-    titolo: 'Scrivi e invia',
-    descrizione: 'Scrivi il tuo messaggio e premi Invio (o il pulsante freccia). Usa il microfono per dettare o l\'altoparlante per ascoltare le risposte in audio.',
-    target: 'input-area',
-  },
-  {
-    titolo: 'Profilo',
-    descrizione: 'Dal profilo carichi fonti permanenti, crei skill personalizzate, colleghi Google Drive e personalizzi le istruzioni base dell\'assistente.',
-    target: 'profilo-btn',
-  },
-  {
-    titolo: 'Questo pulsante è sempre qui',
-    descrizione: 'Il tasto ? apre la guida in qualsiasi momento. Puoi rivedere il tour, cercare aiuto sulle singole funzioni o leggere la guida completa.',
-    target: 'guide-btn',
-  },
-]
+function getTourChat(professione?: string): TourStep[] {
+  return [
+    {
+      titolo: 'Benvenuto!',
+      descrizione: 'Ti guidiamo nelle funzioni principali in pochi passi. Puoi saltare in qualsiasi momento o rivedere il tour dalla guida.',
+    },
+    {
+      titolo: 'Contesto attivo',
+      descrizione: 'Se hai configurato più ambiti (Lavoro, Studio, Personale), da qui li cambi al volo. Ogni ambito ha file, istruzioni e conversazioni separati.',
+      target: 'ambiti',
+    },
+    {
+      titolo: 'Skill personalizzate',
+      descrizione: 'Le skill sono istruzioni che specializzano il comportamento dell\'assistente. Attivane una per adattare le risposte al tuo caso d\'uso.',
+      target: 'skill-selector',
+    },
+    {
+      titolo: 'Allega un file',
+      descrizione: 'Carica PDF, Word, Excel, PPTX o immagini. L\'assistente li legge e risponde in base al contenuto. Puoi anche incollare immagini dagli appunti.',
+      target: 'file-upload',
+    },
+    {
+      titolo: 'Ricerca web',
+      descrizione: professione === 'avvocato'
+        ? 'Scrivi la query (es. "Cassazione sez. lavoro n. 1234/2024") e premi 🔍 per cercare sentenze, leggi e pronunce online. I risultati vengono inclusi automaticamente nel messaggio che stai per inviare.'
+        : 'Premi 🔍 per cercare informazioni aggiornate online. I risultati vengono inclusi come contesto nel messaggio che stai per inviare.',
+      target: 'web-search-btn',
+    },
+    {
+      titolo: 'Scrivi e invia',
+      descrizione: 'Scrivi il tuo messaggio e premi Invio (o il pulsante freccia). Usa il microfono per dettare o l\'altoparlante per ascoltare le risposte in audio.',
+      target: 'input-area',
+    },
+    {
+      titolo: 'Profilo',
+      descrizione: 'Dal profilo carichi fonti permanenti, crei skill personalizzate, colleghi Google Drive e personalizzi le istruzioni base dell\'assistente.',
+      target: 'profilo-btn',
+    },
+    {
+      titolo: 'Questo pulsante è sempre qui',
+      descrizione: 'Il tasto ? apre la guida in qualsiasi momento. Puoi rivedere il tour, cercare aiuto sulle singole funzioni o leggere la guida completa.',
+      target: 'guide-btn',
+    },
+  ]
+}
 
 const TOUR_PROFILO: TourStep[] = [
   {
@@ -80,6 +89,10 @@ const TOUR_PROFILO: TourStep[] = [
 
 const HELP_SEZIONI = [
   {
+    titolo: 'Ricerca web',
+    corpo: 'Il pulsante 🔍 nella barra di input esegue una ricerca online (Brave Search) e include i risultati come contesto nel messaggio che stai per inviare. Scrivi la query, premi 🔍, controlla i risultati nel pannello blu, poi invia il messaggio. I risultati vengono consumati al primo invio. Limite: 20 ricerche/ora.',
+  },
+  {
     titolo: 'Ambiti: Lavoro, Studio, Personale',
     corpo: 'Ogni ambito è un contesto separato con file, istruzioni e conversazioni distinti. Cambio rapido dal badge in alto nella chat.',
   },
@@ -105,7 +118,7 @@ const HELP_SEZIONI = [
   },
 ]
 
-export default function GuidePanel({ pagina }: { pagina: Pagina }) {
+export default function GuidePanel({ pagina, professione }: { pagina: Pagina; professione?: string }) {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [espanso, setEspanso] = useState<number | null>(null)
   const [tourAttivo, setTourAttivo] = useState(false)
@@ -114,7 +127,7 @@ export default function GuidePanel({ pagina }: { pagina: Pagina }) {
   const [tourCompletato, setTourCompletato] = useState(false)
 
   const TOUR_KEY = `guidaTourFatta_${pagina}`
-  const tourSteps = pagina === 'chat' ? TOUR_CHAT : TOUR_PROFILO
+  const tourSteps = pagina === 'chat' ? getTourChat(professione) : TOUR_PROFILO
 
   const updateHighlight = useCallback((step: number) => {
     const target = tourSteps[step]?.target

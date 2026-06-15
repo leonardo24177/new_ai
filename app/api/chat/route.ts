@@ -206,6 +206,7 @@ export async function POST(req: NextRequest) {
       file_contexts,
       active_skill_slugs,
       ambito_attivo,
+      web_search_context,
     } = await req.json()
 
     // Whitelist: ambito_attivo viene interpolato in un filtro PostgREST (.or)
@@ -405,6 +406,14 @@ export async function POST(req: NextRequest) {
           fileTexts.push(`[File allegato: ${fc.nome}]`)
         }
       }
+    }
+
+    // Inietta risultati ricerca web (se l'utente ha premuto 🔍 prima di inviare)
+    if (web_search_context?.results?.length > 0) {
+      const fonti = (web_search_context.results as { title: string; url: string; description: string }[])
+        .map((r, i) => `${i + 1}. ${r.title}\n   ${r.url}\n   ${r.description}`)
+        .join('\n\n')
+      fileTexts.push(`[Risultati ricerca web — "${web_search_context.query}"]\n${fonti}\n[Cita l'URL quando rilevante nella risposta.]`)
     }
 
     // Regole di analisi documentale: solo quando c'è almeno un documento nel contesto

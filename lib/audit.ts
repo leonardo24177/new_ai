@@ -12,6 +12,7 @@ export type AuditAction =
   | 'onboarding_generate'
   | 'admin_file_deleted'
   | 'admin_skill_deleted'
+  | 'web_search'
 
 export async function logAction(
   userId: string,

@@ -199,6 +199,10 @@ export default function ChatPage() {
   const recognitionRef = useRef<any>(null)
   const speechSynthRef = useRef<SpeechSynthesisUtterance | null>(null)
 
+  const [webResults, setWebResults] = useState<{ title: string; url: string; description: string }[] | null>(null)
+  const [webSearching, setWebSearching] = useState(false)
+  const [webQuery, setWebQuery] = useState('')
+
   const [showMicHelp, setShowMicHelp] = useState(false)
   const [shareModalOpen, setShareModalOpen] = useState(false)
   const [shareConvId, setShareConvId] = useState<string | null>(null)
@@ -516,6 +520,9 @@ export default function ChatPage() {
     setLoading(true)
     const sentFiles = [...fileContexts]
     setFileContexts([])
+    const sentWebContext = webResults ? { query: webQuery, results: webResults } : null
+    setWebResults(null)
+    setWebQuery('')
     textareaRef.current?.blur()
 
     // Crea la conversazione su Supabase solo al primo messaggio reale
@@ -578,6 +585,7 @@ export default function ChatPage() {
           file_contexts: sentFiles,
           active_skill_slugs: activeSkills,
           ambito_attivo: ambitoAttivo,
+          web_search_context: sentWebContext,
         }),
       })
       if (!res.ok || !res.body) throw new Error('Errore risposta')
@@ -620,6 +628,27 @@ export default function ChatPage() {
 
   function handleKeyDown(e: React.KeyboardEvent) {
     if (e.key === 'Enter' && !e.shiftKey && window.innerWidth >= 768) { e.preventDefault(); sendMessage() }
+  }
+
+  async function handleWebSearch() {
+    const q = input.trim()
+    if (!q || webSearching || loading) return
+    setWebSearching(true)
+    try {
+      const res = await fetch('/api/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: q }),
+      })
+      const data = await res.json()
+      if (data.error) { toast.error(data.error); return }
+      setWebResults(data.results)
+      setWebQuery(data.query)
+    } catch {
+      toast.error('Errore nella ricerca web')
+    } finally {
+      setWebSearching(false)
+    }
   }
 
   function handleTextareaChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
@@ -1167,10 +1196,51 @@ export default function ChatPage() {
           </div>
         )}
 
+        {/* Risultati ricerca web */}
+        {webResults && (
+          <div className="px-3 pb-1.5 flex-shrink-0">
+            <div className="bg-blue-50 border border-blue-100 rounded-xl p-3">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-medium text-blue-800 truncate flex-1">🔍 &ldquo;{webQuery}&rdquo;</p>
+                <button onClick={() => { setWebResults(null); setWebQuery('') }} className="text-blue-400 hover:text-blue-600 ml-2 text-xs flex-shrink-0">✕</button>
+              </div>
+              <div className="space-y-2">
+                {webResults.map((r, i) => (
+                  <a key={i} href={r.url} target="_blank" rel="noopener noreferrer" className="block group">
+                    <p className="text-xs font-medium text-blue-700 group-hover:underline truncate">{r.title}</p>
+                    {r.description && <p className="text-[11px] text-gray-500 line-clamp-2 mt-0.5">{r.description}</p>}
+                  </a>
+                ))}
+              </div>
+              <p className="text-[10px] text-blue-400 mt-2">Inclusi nel prossimo messaggio · clicca ✕ per annullare</p>
+            </div>
+          </div>
+        )}
+
         {/* Input */}
         <div className={`border-t ${theme.headerBorder} px-3 py-2 bg-white flex-shrink-0`}
           style={{ paddingBottom: 'max(8px, env(safe-area-inset-bottom))' }}>
           <div data-tour="input-area" className={`flex items-end gap-1.5 ${theme.inputBg} border ${isRecording ? 'border-red-400' : theme.inputBorder} rounded-2xl px-2.5 py-2 transition-colors`}>
+            <button
+              onClick={handleWebSearch}
+              disabled={!input.trim() || webSearching || loading}
+              data-tour="web-search-btn"
+              title="Cerca online e includi i risultati nel messaggio"
+              className="w-8 h-8 flex items-center justify-center text-gray-400 active:text-gray-600 disabled:opacity-40 flex-shrink-0"
+            >
+              {webSearching ? (
+                <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                </svg>
+              ) : (
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <circle cx="6.5" cy="6.5" r="4.5" stroke="currentColor" strokeWidth="1.5"/>
+                  <path d="M10 10L14 14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                </svg>
+              )}
+            </button>
+
             <button onClick={() => fileInputRef.current?.click()} disabled={uploading}
               data-tour="file-upload"
               className="w-8 h-8 flex items-center justify-center text-gray-400 active:text-gray-600 disabled:opacity-40 flex-shrink-0">
@@ -1234,7 +1304,7 @@ export default function ChatPage() {
         </div>
       </div>
 
-      <GuidePanel pagina="chat" />
+      <GuidePanel pagina="chat" professione={professione} />
     </div>
   )
 }

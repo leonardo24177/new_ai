@@ -53,6 +53,7 @@ app/
       [id]/share/route.ts   ← GET/POST/DELETE link condivisione (richiede auth)
     conv/
       [token]/route.ts      ← GET/POST lettura conversazione condivisa (pubblico, usa service role)
+    search/route.ts           ← POST ricerca web via Brave Search API (auth + approvato, 20/ora)
   conv/[token]/page.tsx     ← pagina read-only pubblica conversazione condivisa
   chat/page.tsx             ← MAIN APP — chat multiambito con streaming
   profile/page.tsx          ← gestione ambiti, file, Google Drive, system prompt
@@ -157,6 +158,7 @@ RESEND_FROM_EMAIL               ← email mittente verificata in Resend (es. nor
 SENTRY_ORG                      ← nome organizzazione Sentry (leonardo-stancati)
 SENTRY_PROJECT                  ← nome progetto Sentry (javascript-nextjs)
 SENTRY_AUTH_TOKEN               ← token per upload source maps in build
+BRAVE_SEARCH_API_KEY            ← API key Brave Search (piano gratuito: 2.000 query/mese), solo server
 ```
 
 ## Convenzioni di codice
