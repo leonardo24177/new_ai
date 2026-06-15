@@ -47,6 +47,22 @@ export async function GET() {
       .from('user_limits')
       .select('user_id, limite_mensile, modello_max')
 
+    // Spesa del mese corrente per utente
+    const primoMese = new Date()
+    primoMese.setDate(1)
+    primoMese.setHours(0, 0, 0, 0)
+    const { data: messaggiMese } = await service
+      .from('messages')
+      .select('costo_stimato, conversations!inner(user_id)')
+      .gte('created_at', primoMese.toISOString())
+
+    const spesePerUtente: Record<string, number> = {}
+    for (const msg of messaggiMese || []) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const userId = (msg as any).conversations?.user_id
+      if (userId) spesePerUtente[userId] = (spesePerUtente[userId] || 0) + (Number(msg.costo_stimato) || 0)
+    }
+
     const { data: authData, error } = await service.auth.admin.listUsers({ page: 1, perPage: 1000 })
 
     if (error) {
@@ -77,6 +93,7 @@ export async function GET() {
         approvato: u.app_metadata?.approvato === true,
         limite_mensile: Number(limits?.find(l => l.user_id === u.id)?.limite_mensile) || COSTO_MENSILE_DEFAULT,
         modello_max: limits?.find(l => l.user_id === u.id)?.modello_max || null,
+        speso_mese: spesePerUtente[u.id] || 0,
       }
     })
 

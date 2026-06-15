@@ -16,6 +16,7 @@ interface User {
   approvato: boolean
   limite_mensile: number
   modello_max: string | null
+  speso_mese: number
 }
 
 interface Skill {
@@ -557,10 +558,18 @@ export default function AdminPage() {
                         )}
                       </div>
                       <p className="text-xs text-gray-400">{user.email}</p>
-                      <p className="text-xs text-gray-300 mt-0.5">
-                        {new Date(user.created_at).toLocaleDateString('it-IT')}
-                        {' · '}limite ${user.limite_mensile.toFixed(2)}/mese
-                        {user.modello_max && <span className="text-amber-500"> · cap: {user.modello_max}</span>}
+                      <p className="text-xs mt-0.5 flex items-center gap-1 flex-wrap">
+                        <span className="text-gray-300">{new Date(user.created_at).toLocaleDateString('it-IT')}</span>
+                        <span className="text-gray-300">·</span>
+                        <span className={
+                          user.speso_mese / user.limite_mensile >= 0.9 ? 'text-red-400 font-medium' :
+                          user.speso_mese / user.limite_mensile >= 0.6 ? 'text-amber-500' :
+                          'text-gray-400'
+                        }>
+                          spesi ${user.speso_mese.toFixed(2)}
+                        </span>
+                        <span className="text-gray-300">di ${user.limite_mensile.toFixed(2)}/mese</span>
+                        {user.modello_max && <span className="text-amber-500">· cap: {user.modello_max}</span>}
                       </p>
                     </div>
                     <button
