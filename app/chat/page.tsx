@@ -418,9 +418,13 @@ export default function ChatPage() {
   async function loadConversation(conv: Conversation) {
     const supabase = createClient()
     const { data: msgs } = await supabase
-      .from('messages').select('ruolo, contenuto')
+      .from('messages').select('ruolo, contenuto, allegati')
       .eq('conversation_id', conv.id).order('created_at', { ascending: true })
-    if (msgs) setMessages(msgs.map(m => ({ role: m.ruolo as 'user' | 'assistant', content: m.contenuto })))
+    if (msgs) setMessages(msgs.map(m => ({
+      role: m.ruolo as 'user' | 'assistant',
+      content: m.contenuto,
+      ...(m.allegati && { files: m.allegati as { nome: string; mime_type: string }[] }),
+    })))
     setConversationId(conv.id)
     isFirstMessage.current = false
     setSidebarOpen(false)

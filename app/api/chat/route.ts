@@ -454,10 +454,14 @@ export async function POST(req: NextRequest) {
     if (conversation_id) {
       const lastMessage = messages[messages.length - 1]
       if (lastMessage?.role === 'user') {
+        const allegati = file_contexts && file_contexts.length > 0
+          ? file_contexts.map((f: { nome: string; mime_type: string }) => ({ nome: f.nome, mime_type: f.mime_type }))
+          : null
         await supabase.from('messages').insert({
           conversation_id,
           ruolo: 'user',
           contenuto: lastMessage.content,
+          ...(allegati && { allegati }),
         })
       }
     }
