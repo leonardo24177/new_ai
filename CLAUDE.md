@@ -53,7 +53,7 @@ app/
       [id]/share/route.ts   ← GET/POST/DELETE link condivisione (richiede auth)
     conv/
       [token]/route.ts      ← GET/POST lettura conversazione condivisa (pubblico, usa service role)
-    search/route.ts           ← POST ricerca web via Brave Search API (auth + approvato, 20/ora)
+    search/route.ts           ← POST ricerca web via Tavily Search (auth + approvato, 20/ora); filtra include_domains per professione utente (commercialista, ingegnere, avvocato, ecc.) — mappa DOMINI_PER_PROFESSIONE nella route
   conv/[token]/page.tsx     ← pagina read-only pubblica conversazione condivisa
   chat/page.tsx             ← MAIN APP — chat multiambito con streaming
   profile/page.tsx          ← gestione ambiti, file, Google Drive, system prompt
