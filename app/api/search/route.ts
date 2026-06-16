@@ -57,6 +57,7 @@ const DOMINI_PER_PROFESSIONE: Record<string, string[]> = {
     'gazzettaufficiale.it',
     'giustizia.it',
     'cortedicassazione.it',
+    'dejure.it',
     'altalex.com',
     'brocardi.it',
     'cnf.it',
