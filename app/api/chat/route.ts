@@ -399,9 +399,27 @@ export async function POST(req: NextRequest) {
         imageBlocks.push(...chatImageResults.filter((b): b is ImageBlock => b !== null))
       }
 
+      // Per i file senza testo lato client (estrazione fallita o troncata), ri-fetcha dal DB
+      const idsDaFetchare = chatTextFiles
+        .filter((fc: { id?: string; testo?: string }) => fc.id && !fc.testo)
+        .map((fc: { id: string }) => fc.id)
+
+      let testiDaDb: Record<string, string> = {}
+      if (idsDaFetchare.length > 0) {
+        const { data: dbFiles } = await supabase
+          .from('user_files')
+          .select('id, testo_contenuto')
+          .in('id', idsDaFetchare)
+          .eq('user_id', user.id)
+        if (dbFiles) {
+          testiDaDb = Object.fromEntries(dbFiles.map((f: { id: string; testo_contenuto: string | null }) => [f.id, f.testo_contenuto || '']))
+        }
+      }
+
       for (const fc of chatTextFiles) {
-        if (fc.testo) {
-          fileTexts.push(`[File allegato: ${fc.nome}]\n${fc.testo}`)
+        const testo = fc.testo || (fc.id ? testiDaDb[fc.id] : '') || ''
+        if (testo) {
+          fileTexts.push(`[File allegato: ${fc.nome}]\n${testo}`)
         } else if (fc.nome) {
           fileTexts.push(`[File allegato: ${fc.nome}]`)
         }
