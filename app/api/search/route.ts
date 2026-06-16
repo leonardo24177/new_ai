@@ -157,10 +157,32 @@ export async function POST(req: NextRequest) {
     const data = await res.json()
     const organic: { title?: string; link?: string; snippet?: string }[] = data?.organic || []
 
-    const results = organic.slice(0, 5).map((r) => ({
+    const top = organic.slice(0, 5)
+
+    // Fetcha il testo completo delle prime 3 pagine via r.jina.ai
+    const MAX_CONTENT = 4000
+    const contentPromises = top.slice(0, 3).map(async (r) => {
+      if (!r.link) return ''
+      try {
+        const pageRes = await fetch(`https://r.jina.ai/${r.link}`, {
+          signal: AbortSignal.timeout(8000),
+          headers: { 'Accept': 'text/plain' },
+        })
+        if (!pageRes.ok) return ''
+        const text = await pageRes.text()
+        return text.slice(0, MAX_CONTENT)
+      } catch {
+        return ''
+      }
+    })
+
+    const contents = await Promise.all(contentPromises)
+
+    const results = top.map((r, i) => ({
       title: r.title || '',
       url: r.link || '',
       description: r.snippet || '',
+      ...(contents[i] ? { raw_content: contents[i] } : {}),
     }))
 
     logAction(user.id, user.email || '', 'web_search', { query: q, professione, risultati: results.length }).catch(() => {})
