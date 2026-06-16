@@ -1212,7 +1212,7 @@ export default function ChatPage() {
                   </a>
                 ))}
               </div>
-              <p className="text-[10px] text-blue-400 mt-2">Inclusi nel prossimo messaggio · clicca ✕ per annullare</p>
+              <p className="text-[10px] text-blue-400 mt-2">Saranno allegati al tuo prossimo messaggio · clicca ✕ per annullare</p>
             </div>
           </div>
         )}
