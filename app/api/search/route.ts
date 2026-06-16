@@ -52,16 +52,8 @@ const DOMINI_PER_PROFESSIONE: Record<string, string[]> = {
     'cng.it',
     'edilportale.com',
   ],
-  avvocato: [
-    'normattiva.it',
-    'gazzettaufficiale.it',
-    'giustizia.it',
-    'cortedicassazione.it',
-    'dejure.it',
-    'altalex.com',
-    'brocardi.it',
-    'cnf.it',
-  ],
+  // avvocato: ricerca aperta — le sentenze specifiche sono su aggregatori non prevedibili
+  avvocato: [],
   notaio: [
     'normattiva.it',
     'gazzettaufficiale.it',
