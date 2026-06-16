@@ -435,6 +435,8 @@ export async function POST(req: NextRequest) {
         })
         .join('\n\n')
       fileTexts.push(`[Risultati ricerca web — "${web_search_context.query}"]\n${fonti}\n[Cita l'URL quando rilevante nella risposta.]`)
+      // Sblocca la REGOLA_FONTI per i risultati web: sono fonti verificate in tempo reale
+      systemPrompt = `${systemPrompt}\n\n---\nNOTA RICERCA WEB: In questo messaggio hai accesso a risultati di ricerca Google reali e aggiornati (vedi [Risultati ricerca web] nel contesto). Trattali come fonti verificate: puoi citarne il contenuto direttamente senza l'avviso ⚠️ FONTE NON VERIFICATA. Se il testo completo di un documento è presente nel contesto, analizzalo e commentalo direttamente.`
     }
 
     // Regole di analisi documentale: solo quando c'è almeno un documento nel contesto
