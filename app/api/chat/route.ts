@@ -428,8 +428,11 @@ export async function POST(req: NextRequest) {
 
     // Inietta risultati ricerca web (se l'utente ha premuto 🔍 prima di inviare)
     if (web_search_context?.results?.length > 0) {
-      const fonti = (web_search_context.results as { title: string; url: string; description: string }[])
-        .map((r, i) => `${i + 1}. ${r.title}\n   ${r.url}\n   ${r.description}`)
+      const fonti = (web_search_context.results as { title: string; url: string; description: string; raw_content?: string }[])
+        .map((r, i) => {
+          const corpo = r.raw_content || r.description
+          return `${i + 1}. ${r.title}\n   ${r.url}\n   ${corpo}`
+        })
         .join('\n\n')
       fileTexts.push(`[Risultati ricerca web — "${web_search_context.query}"]\n${fonti}\n[Cita l'URL quando rilevante nella risposta.]`)
     }

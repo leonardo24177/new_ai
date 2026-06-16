@@ -133,6 +133,7 @@ export async function POST(req: NextRequest) {
       api_key: apiKey,
       query: q,
       max_results: 5,
+      include_raw_content: true,
     }
     if (includedomains.length > 0) body.include_domains = includedomains
 
@@ -155,12 +156,15 @@ export async function POST(req: NextRequest) {
     }
 
     const data = await res.json()
-    const raw: { title?: string; url?: string; content?: string }[] = data?.results || []
+    const raw: { title?: string; url?: string; content?: string; raw_content?: string }[] = data?.results || []
 
+    // raw_content troncato a 3000 char per risultato per non esplodere il contesto
+    const MAX_RAW = 3000
     const results = raw.slice(0, 5).map((r) => ({
       title: r.title || '',
       url: r.url || '',
       description: r.content || '',
+      ...(r.raw_content ? { raw_content: r.raw_content.slice(0, MAX_RAW) } : {}),
     }))
 
     logAction(user.id, user.email || '', 'web_search', { query: q, professione, risultati: results.length }).catch(() => {})
