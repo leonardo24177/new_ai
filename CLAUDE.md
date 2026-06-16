@@ -158,7 +158,8 @@ RESEND_FROM_EMAIL               ← email mittente verificata in Resend (es. nor
 SENTRY_ORG                      ← nome organizzazione Sentry (leonardo-stancati)
 SENTRY_PROJECT                  ← nome progetto Sentry (javascript-nextjs)
 SENTRY_AUTH_TOKEN               ← token per upload source maps in build
-TAVILY_API_KEY                  ← API key Tavily Search (piano Researcher: 1.000 crediti/mese gratis), solo server
+SERPER_API_KEY                  ← API key Serper.dev (Google Search), solo server — sostituisce Tavily
+TAVILY_API_KEY                  ← API key Tavily Search (non più usata, mantenuta per riferimento)
 ```
 
 ## Convenzioni di codice
@@ -180,7 +181,7 @@ TAVILY_API_KEY                  ← API key Tavily Search (piano Researcher: 1.0
 - **File**: il testo estratto viene troncato a 150.000 caratteri all'upload (`MAX_TESTO_ESTRATTO`); in chat i file di profilo sono troncati a 60.000 (`MAX_CHAR_FILE_PROFILO`) con avviso esplicito `[…DOCUMENTO TRONCATO…]` nel contesto, gli allegati chat passano interi. I PDF multi-pagina hanno marcatori `[Pagina N]` (sia da pdf-parse che da OCR) per citazioni precise. Quando ci sono documenti nel contesto, il chat route inietta la `REGOLA_DOCUMENTI` (citazioni testuali con pagina, niente deduzioni, avviso se troncato) dopo la `REGOLA_FONTI`.
 - **Allegati chat — fallback DB**: se il client invia `fc.testo` vuoto (estrazione fallita o dato perso in transito), il chat route ri-fetcha `testo_contenuto` da `user_files` per gli `id` privi di testo (con verifica `user_id`). Non affidarsi al solo dato client-side per il contenuto degli allegati.
 - **Allegati chat — segnaposto UI**: l'interfaccia `Message` include `files?: { nome: string; mime_type: string }[]`; quando l'utente invia un messaggio con allegati, i file vengono salvati nel messaggio e mostrati come chip sopra la bolla utente (icona per tipo: PDF, Word, Excel, immagine, ecc.). I chip persistono anche ricaricando la conversazione dalla colonna `allegati` (JSONB) in `messages` — migration in `supabase/rls/messages_allegati_migration.sql`.
-- **Ricerca web — domini per professione**: `app/api/search/route.ts` legge la professione da `user_ambiti.onboarding_data.professione` e passa `include_domains` a Tavily per filtrare i risultati su fonti autorevoli (es. commercialista → `agenziaentrate.gov.it`, `normattiva.it`; ingegnere → `mit.gov.it`, `cni.it`). La mappa `DOMINI_PER_PROFESSIONE` è nella route. Se la professione non è mappata, la ricerca resta aperta.
+- **Ricerca web — backend**: `app/api/search/route.ts` usa **Serper.dev** (Google Search) via `SERPER_API_KEY`. Il filtro domini per professione si applica come operatori `site:` nella query Google (es. `query (site:agenziaentrate.gov.it OR site:normattiva.it)`). Avvocato usa ricerca aperta (lista vuota) perché le sentenze specifiche sono su siti non prevedibili. La mappa `DOMINI_PER_PROFESSIONE` è nella route.
 - **Immagini in chat**: passate a Claude come `image` blocks (non come testo). Download in parallelo con `Promise.all`. Limite: max 5 immagini totali (profilo + chat), max 4MB per immagine. Formati: JPEG, PNG, GIF, WebP. Immagini > 4MB vengono silenziosamente scartate.
 - **Clipboard paste immagini**: `onPaste` sulla textarea — se il clipboard contiene un'immagine, la carica direttamente come allegato chat senza dialog.
 - **Drag & drop file**: handler `onDragOver/onDrop` sul container principale della chat. Max 3 file per drop. Overlay visivo durante il drag. Toast errore include il nome del file specifico che ha fallito.

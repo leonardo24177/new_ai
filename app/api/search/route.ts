@@ -5,7 +5,7 @@ import { logAction } from '@/lib/audit'
 
 const MAX_RICERCHE_ORA = 20
 
-// Domini autorevoli per professione (usati come include_domains in Tavily)
+// Domini autorevoli per professione — usati come filtro site: nella query Google (Serper)
 const DOMINI_PER_PROFESSIONE: Record<string, string[]> = {
   commercialista: [
     'agenziaentrate.gov.it',
@@ -52,7 +52,7 @@ const DOMINI_PER_PROFESSIONE: Record<string, string[]> = {
     'cng.it',
     'edilportale.com',
   ],
-  avvocato: [], // ricerca aperta: le sentenze specifiche sono indicizzate su siti non prevedibili
+  avvocato: [], // ricerca aperta: le sentenze specifiche sono su siti non prevedibili
   notaio: [
     'normattiva.it',
     'gazzettaufficiale.it',
@@ -112,12 +112,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: `Limite ricerche raggiunto (max ${MAX_RICERCHE_ORA}/ora). Riprova più tardi.` }, { status: 429 })
     }
 
-    const apiKey = process.env.TAVILY_API_KEY || process.env.BRAVE_SEARCH_API_KEY
+    const apiKey = process.env.SERPER_API_KEY
     if (!apiKey) {
       return NextResponse.json({ error: 'Servizio di ricerca non configurato' }, { status: 503 })
     }
 
-    // Leggi la professione dell'utente per filtrare i domini
+    // Leggi la professione per eventuale filtro domini
     const { data: ambitoLavoro } = await supabase
       .from('user_ambiti')
       .select('onboarding_data')
@@ -126,44 +126,41 @@ export async function POST(req: NextRequest) {
       .single()
 
     const professione: string = ambitoLavoro?.onboarding_data?.professione || ''
-    const includedomains = DOMINI_PER_PROFESSIONE[professione] || []
+    const domini = DOMINI_PER_PROFESSIONE[professione] || []
 
-    const body: Record<string, unknown> = {
-      api_key: apiKey,
-      query: q,
-      max_results: 5,
-      include_raw_content: true,
+    // Con Serper (Google) il filtro domini si applica come operatori site: nella query
+    let queryFinale = q
+    if (domini.length > 0) {
+      const siteFilter = domini.map(d => `site:${d}`).join(' OR ')
+      queryFinale = `${q} (${siteFilter})`
     }
-    if (includedomains.length > 0) body.include_domains = includedomains
 
-    const res = await fetch('https://api.tavily.com/search', {
+    const res = await fetch('https://google.serper.dev/search', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+      headers: {
+        'X-API-KEY': apiKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ q: queryFinale, num: 5, gl: 'it', hl: 'it' }),
     })
 
     if (!res.ok) {
       const resBody = await res.text().catch(() => '')
-      console.error('Tavily Search error:', res.status, resBody.slice(0, 500))
-      const detail = resBody ? ` — ${resBody.slice(0, 120)}` : ''
+      console.error('Serper Search error:', res.status, resBody.slice(0, 500))
       const msg =
-        res.status === 401 ? 'API key Tavily non valida (401)' :
-        res.status === 403 ? 'Piano non autorizzato per la ricerca (403)' :
-        res.status === 429 ? 'Limite Tavily raggiunto (429)' :
-        `Errore ricerca ${res.status}${detail}`
+        res.status === 401 ? 'API key Serper non valida (401)' :
+        res.status === 429 ? 'Limite Serper raggiunto (429)' :
+        `Errore ricerca ${res.status}`
       return NextResponse.json({ error: msg }, { status: 502 })
     }
 
     const data = await res.json()
-    const raw: { title?: string; url?: string; content?: string; raw_content?: string }[] = data?.results || []
+    const organic: { title?: string; link?: string; snippet?: string }[] = data?.organic || []
 
-    // raw_content troncato a 3000 char per risultato per non esplodere il contesto
-    const MAX_RAW = 3000
-    const results = raw.slice(0, 5).map((r) => ({
+    const results = organic.slice(0, 5).map((r) => ({
       title: r.title || '',
-      url: r.url || '',
-      description: r.content || '',
-      ...(r.raw_content ? { raw_content: r.raw_content.slice(0, MAX_RAW) } : {}),
+      url: r.link || '',
+      description: r.snippet || '',
     }))
 
     logAction(user.id, user.email || '', 'web_search', { query: q, professione, risultati: results.length }).catch(() => {})
