@@ -10,6 +10,7 @@ import GuidePanel from '@/components/GuidePanel'
 interface Message {
   role: 'user' | 'assistant'
   content: string
+  files?: { nome: string; mime_type: string }[]
 }
 
 interface FileContext {
@@ -67,6 +68,15 @@ const AMBITI_CONFIG = [
   { value: 'personale' as Ambito, label: 'Personale', emoji: '🏠' },
 ]
 
+function fileIcon(mime: string) {
+  if (mime.startsWith('image/')) return '🖼️'
+  if (mime === 'application/pdf') return '📄'
+  if (mime.includes('word') || mime.includes('document')) return '📝'
+  if (mime.includes('sheet') || mime.includes('excel') || mime.includes('spreadsheet')) return '📊'
+  if (mime.includes('presentation') || mime.includes('powerpoint')) return '📑'
+  return '📎'
+}
+
 function MessageBubble({ message, theme }: { message: Message; theme: typeof AMBITI_THEME.default }) {
   const isUser = message.role === 'user'
   const hasWarning = !isUser && message.content.startsWith('⚠️ FONTE NON VERIFICATA')
@@ -81,6 +91,16 @@ function MessageBubble({ message, theme }: { message: Message; theme: typeof AMB
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-3 message-appear`}>
       <div className="max-w-[82%]">
+        {isUser && message.files && message.files.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 justify-end mb-1.5">
+            {message.files.map((f, i) => (
+              <div key={i} className="flex items-center gap-1 bg-white border border-gray-200 rounded-xl px-2.5 py-1 shadow-sm">
+                <span className="text-sm">{fileIcon(f.mime_type)}</span>
+                <span className="text-xs text-gray-600 max-w-[160px] truncate">{f.nome}</span>
+              </div>
+            ))}
+          </div>
+        )}
         {hasWarning && (
           <div className="mb-2 px-3 py-2 rounded-xl bg-amber-50 border border-amber-200">
             <p className="text-xs text-amber-800 font-medium">{warningText}</p>
@@ -513,12 +533,16 @@ export default function ChatPage() {
   async function sendMessage() {
     if (!input.trim() || loading) return
     setIntroMessage('')
-    const userMessage: Message = { role: 'user', content: input.trim() }
+    const sentFiles = [...fileContexts]
+    const userMessage: Message = {
+      role: 'user',
+      content: input.trim(),
+      ...(sentFiles.length > 0 && { files: sentFiles.map(f => ({ nome: f.nome, mime_type: f.mime_type })) }),
+    }
     const newMessages = [...messages, userMessage]
     setMessages(newMessages)
     setInput('')
     setLoading(true)
-    const sentFiles = [...fileContexts]
     setFileContexts([])
     const sentWebContext = webResults ? { query: webQuery, results: webResults } : null
     setWebResults(null)
