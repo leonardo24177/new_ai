@@ -145,6 +145,10 @@ conversation_shares  id, conversation_id (FK conversations ON DELETE CASCADE),
 - In Next.js 16 il file si chiama **`proxy.ts`** (non `middleware.ts`) e la funzione esportata si chiama **`proxy`** (non `middleware`). Rinominarla causerà errore "Proxy is missing expected function export name".
 - Il matcher include `/in-attesa` per gestire il redirect degli utenti non approvati.
 
+## Supabase keep-alive
+
+Il piano Free di Supabase sospende il progetto dopo 7gg senza attività API. `app/api/cron/keepalive/route.ts` fa una query leggera (`admins`, limit 1) con la service role key; `vercel.json` la richiama ogni giorno (`0 5 * * *`) via Vercel Cron. Nessuna logica di business — solo a resettare il timer di inattività. Se è impostata `CRON_SECRET`, la route richiede l'header `Authorization: Bearer $CRON_SECRET` (Vercel lo aggiunge automaticamente alle chiamate cron).
+
 ## Variabili d'ambiente richieste
 
 ```
@@ -160,6 +164,7 @@ SENTRY_PROJECT                  ← nome progetto Sentry (javascript-nextjs)
 SENTRY_AUTH_TOKEN               ← token per upload source maps in build
 SERPER_API_KEY                  ← API key Serper.dev (Google Search), solo server — sostituisce Tavily
 TAVILY_API_KEY                  ← API key Tavily Search (non più usata, mantenuta per riferimento)
+CRON_SECRET                     ← opzionale, protegge /api/cron/keepalive (Vercel la inietta da sé nelle chiamate cron)
 ```
 
 ## Convenzioni di codice
